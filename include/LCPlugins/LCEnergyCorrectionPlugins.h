@@ -33,12 +33,27 @@ public:
          */
         NonLinearityCorrection(const pandora::FloatVector &inputEnergyCorrectionPoints, const pandora::FloatVector &outputEnergyCorrectionPoints);
 
+        /**
+         *  @brief  Constructor
+         *
+         *  @param  thetaBinEdges the theta bin edges for the 2D lookup
+         *  @param  energyBinEdges the energy bin edges for the 2D lookup
+         *  @param  scaleFactors the row-major correction factors for the 2D lookup
+         */
+        NonLinearityCorrection(const pandora::FloatVector &thetaBinEdges, const pandora::FloatVector &energyBinEdges,
+            const pandora::FloatVector &scaleFactors);
+
         pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const;
 
     private:
         pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
+        float GetCorrection(const float theta, const float energy) const;
+
+        bool                    m_useTwoDimensionalCorrection = false; ///< Whether to use theta-energy binning
         pandora::FloatVector m_inputEnergyCorrectionPoints; ///< The input energy points for energy correction
+        pandora::FloatVector m_thetaBinEdges;               ///< The theta bin edges for the 2D lookup
+        pandora::FloatVector m_energyBinEdges;              ///< The energy bin edges for the 2D lookup
         pandora::FloatVector m_energyCorrections;           ///< The energy correction factors
     };
 

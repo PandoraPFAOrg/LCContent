@@ -17,6 +17,42 @@ using namespace pandora;
 namespace lc_content
 {
 
+namespace
+{
+
+bool IsStrictlyIncreasing(const FloatVector &values)
+{
+    if (values.size() < 2)
+        return false;
+
+    for (unsigned int i = 1; i < values.size(); ++i)
+    {
+        if (values.at(i) <= values.at(i - 1))
+            return false;
+    }
+
+    return true;
+}
+
+int FindBin(const FloatVector &edges, const float value)
+{
+    if (edges.size() < 2)
+        return -1;
+
+    if ((value < edges.front()) || (value >= edges.back()))
+        return -1;
+
+    for (unsigned int i = 0; i + 1 < edges.size(); ++i)
+    {
+        if ((edges.at(i) <= value) && (value < edges.at(i + 1)))
+            return static_cast<int>(i);
+    }
+
+    return -1;
+}
+
+} // namespace
+
 LCEnergyCorrectionPlugins::NonLinearityCorrection::NonLinearityCorrection(const FloatVector &inputEnergyCorrectionPoints,
         const FloatVector &outputEnergyCorrectionPoints) :
     m_inputEnergyCorrectionPoints(inputEnergyCorrectionPoints)
@@ -43,8 +79,43 @@ LCEnergyCorrectionPlugins::NonLinearityCorrection::NonLinearityCorrection(const 
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-pandora::StatusCode LCEnergyCorrectionPlugins::NonLinearityCorrection::MakeEnergyCorrections(const pandora::Cluster *const /*const pCluster*/, float &correctedEnergy) const
+LCEnergyCorrectionPlugins::NonLinearityCorrection::NonLinearityCorrection(const FloatVector &thetaBinEdges, const FloatVector &energyBinEdges,
+        const FloatVector &scaleFactors) :
+    m_useTwoDimensionalCorrection(true),
+    m_thetaBinEdges(thetaBinEdges),
+    m_energyBinEdges(energyBinEdges),
+    m_energyCorrections(scaleFactors)
 {
+    if (!IsStrictlyIncreasing(m_thetaBinEdges) || !IsStrictlyIncreasing(m_energyBinEdges))
+        throw pandora::StatusCodeException(pandora::STATUS_CODE_INVALID_PARAMETER);
+
+    const unsigned int nThetaBins(m_thetaBinEdges.size() - 1);
+    const unsigned int nEnergyBins(m_energyBinEdges.size() - 1);
+
+    if ((0 == nThetaBins) || (0 == nEnergyBins) || (nThetaBins * nEnergyBins != m_energyCorrections.size()))
+        throw pandora::StatusCodeException(pandora::STATUS_CODE_INVALID_PARAMETER);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+pandora::StatusCode LCEnergyCorrectionPlugins::NonLinearityCorrection::MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const
+{
+    if (m_useTwoDimensionalCorrection)
+    {
+        if (NULL == pCluster)
+            return pandora::STATUS_CODE_SUCCESS;
+
+        const CartesianVector &clusterDirection(pCluster->GetFitToAllHitsResult().IsFitSuccessful() ?
+            pCluster->GetFitToAllHitsResult().GetDirection() : pCluster->GetInitialDirection());
+
+        if (clusterDirection.GetMagnitude() < std::numeric_limits<float>::epsilon())
+            return pandora::STATUS_CODE_SUCCESS;
+
+        const float cosTheta(std::max(-1.f, std::min(1.f, clusterDirection.GetCosOpeningAngle(CartesianVector(0.f, 0.f, 1.f)))));
+        correctedEnergy *= this->GetCorrection(std::acos(cosTheta), correctedEnergy);
+        return pandora::STATUS_CODE_SUCCESS;
+    }
+
     const unsigned int nEnergyBins(m_energyCorrections.size());
 
     if (0 == nEnergyBins)
@@ -84,6 +155,20 @@ pandora::StatusCode LCEnergyCorrectionPlugins::NonLinearityCorrection::MakeEnerg
 pandora::StatusCode LCEnergyCorrectionPlugins::NonLinearityCorrection::ReadSettings(const pandora::TiXmlHandle /*xmlHandle*/)
 {
     return pandora::STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float LCEnergyCorrectionPlugins::NonLinearityCorrection::GetCorrection(const float theta, const float energy) const
+{
+    const int thetaBin(FindBin(m_thetaBinEdges, theta));
+    const int energyBin(FindBin(m_energyBinEdges, energy));
+
+    if ((thetaBin < 0) || (energyBin < 0))
+        return 1.f;
+
+    const unsigned int nEnergyBins(m_energyBinEdges.size() - 1);
+    return m_energyCorrections.at(static_cast<unsigned int>(thetaBin) * nEnergyBins + static_cast<unsigned int>(energyBin));
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

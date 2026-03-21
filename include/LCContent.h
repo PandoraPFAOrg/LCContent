@@ -55,6 +55,20 @@ public:
     static pandora::StatusCode RegisterNonLinearityEnergyCorrection(const pandora::Pandora &pandora, const std::string &name,
         const pandora::EnergyCorrectionType energyCorrectionType, const pandora::FloatVector &inputEnergyCorrectionPoints,
         const pandora::FloatVector &outputEnergyCorrectionPoints);
+
+    /**
+     *  @brief  Register the theta-energy non linearity energy correction plugin (note user side configuration) with pandora
+     *
+     *  @param  pandora the pandora instance with which to register content
+     *  @param  name the name/label associated with the energy correction plugin
+     *  @param  energyCorrectionType the energy correction type
+     *  @param  thetaBinEdges the theta bin edges for the 2D lookup
+     *  @param  energyBinEdges the energy bin edges for the 2D lookup
+     *  @param  scaleFactors the row-major correction factors for the 2D lookup
+     */
+    static pandora::StatusCode RegisterNonLinearityEnergyCorrection(const pandora::Pandora &pandora, const std::string &name,
+        const pandora::EnergyCorrectionType energyCorrectionType, const pandora::FloatVector &thetaBinEdges,
+        const pandora::FloatVector &energyBinEdges, const pandora::FloatVector &scaleFactors);
     
     /**
      *  @brief  Register the software compensation energy correction plugin (note user side configuration) with pandora

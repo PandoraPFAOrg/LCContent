@@ -242,6 +242,16 @@ pandora::StatusCode LCContent::RegisterNonLinearityEnergyCorrection(const pandor
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+pandora::StatusCode LCContent::RegisterNonLinearityEnergyCorrection(const pandora::Pandora &pandora, const std::string &name,
+    const pandora::EnergyCorrectionType energyCorrectionType, const pandora::FloatVector &thetaBinEdges,
+    const pandora::FloatVector &energyBinEdges, const pandora::FloatVector &scaleFactors)
+{
+    return PandoraApi::RegisterEnergyCorrectionPlugin(pandora, name, energyCorrectionType,
+        new lc_content::LCEnergyCorrectionPlugins::NonLinearityCorrection(thetaBinEdges, energyBinEdges, scaleFactors));
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 pandora::StatusCode LCContent::RegisterSoftwareCompensationEnergyCorrection(const pandora::Pandora &pandora, const std::string &name,
     const lc_content::LCSoftwareCompensationParameters &parameters)
 {
