@@ -127,12 +127,14 @@ StatusCode ConeBasedMergingAlgorithm::Run()
             if (sigmaE < std::numeric_limits<float>::epsilon())
                 return STATUS_CODE_FAILURE;
 
-            const float clusterEnergySum = (pBestParentCluster->GetHadronicEnergy() + pDaughterCluster->GetHadronicEnergy());
+            const float parentHadronicEnergy(pBestParentCluster->GetCorrectedHadronicEnergy(this->GetPandora()));
+            const float daughterHadronicEnergy(pDaughterCluster->GetCorrectedHadronicEnergy(this->GetPandora()));
+            const float clusterEnergySum(parentHadronicEnergy + daughterHadronicEnergy);
 
             const float chi((clusterEnergySum - trackEnergySum) / sigmaE);
-            const float chi0((pBestParentCluster->GetHadronicEnergy() - trackEnergySum) / sigmaE);
+            const float chi0((parentHadronicEnergy - trackEnergySum) / sigmaE);
 
-            if (pDaughterCluster->GetHadronicEnergy() > m_minDaughterHadronicEnergy)
+            if (daughterHadronicEnergy > m_minDaughterHadronicEnergy)
             {
                 if ((chi > m_maxTrackClusterChi) || ((chi * chi - chi0 * chi0) > m_maxTrackClusterDChi2))
                     continue;
