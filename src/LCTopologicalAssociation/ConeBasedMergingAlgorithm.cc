@@ -11,6 +11,8 @@
 #include "LCHelpers/ClusterHelper.h"
 #include "LCHelpers/SortingHelper.h"
 
+#include "LCPlugins/LCEnergyCorrectionPlugins.h"
+
 #include "LCTopologicalAssociation/ConeBasedMergingAlgorithm.h"
 
 using namespace pandora;
@@ -128,13 +130,18 @@ StatusCode ConeBasedMergingAlgorithm::Run()
                 return STATUS_CODE_FAILURE;
 
             const float parentHadronicEnergy(pBestParentCluster->GetCorrectedHadronicEnergy(this->GetPandora()));
-            const float daughterHadronicEnergy(pDaughterCluster->GetCorrectedHadronicEnergy(this->GetPandora()));
-            const float clusterEnergySum(parentHadronicEnergy + daughterHadronicEnergy);
+            const float mergedHadronicEnergy(pBestParentCluster->GetHadronicEnergy() + pDaughterCluster->GetHadronicEnergy());
+            // Use the parent direction as the merged-cluster direction estimate; the daughter has passed the parent-cone test.
+            const CartesianVector &parentDirection(pBestParentCluster->GetFitToAllHitsResult().IsFitSuccessful() ?
+                pBestParentCluster->GetFitToAllHitsResult().GetDirection() : pBestParentCluster->GetInitialDirection());
+            const float mergedCorrectedHadronicEnergy(LCEnergyCorrectionPlugins::GetThetaEnergyCorrectedEnergy(
+                pandora::HADRONIC, parentDirection, mergedHadronicEnergy));
+            const float addedCorrectedHadronicEnergy(std::max(0.f, mergedCorrectedHadronicEnergy - parentHadronicEnergy));
 
-            const float chi((clusterEnergySum - trackEnergySum) / sigmaE);
+            const float chi((mergedCorrectedHadronicEnergy - trackEnergySum) / sigmaE);
             const float chi0((parentHadronicEnergy - trackEnergySum) / sigmaE);
 
-            if (daughterHadronicEnergy > m_minDaughterHadronicEnergy)
+            if (addedCorrectedHadronicEnergy > m_minDaughterHadronicEnergy)
             {
                 if ((chi > m_maxTrackClusterChi) || ((chi * chi - chi0 * chi0) > m_maxTrackClusterDChi2))
                     continue;

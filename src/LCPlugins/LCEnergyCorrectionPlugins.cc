@@ -12,6 +12,8 @@
 
 #include "LCPlugins/LCEnergyCorrectionPlugins.h"
 
+#include <map>
+
 using namespace pandora;
 
 namespace lc_content
@@ -19,6 +21,33 @@ namespace lc_content
 
 namespace
 {
+
+typedef std::pair<std::string, EnergyCorrectionType> ThetaEnergyCorrectionKey;
+
+class ThetaEnergyCorrectionTable
+{
+public:
+    ThetaEnergyCorrectionTable() = default;
+
+    ThetaEnergyCorrectionTable(const FloatVector &thetaBinEdges, const FloatVector &energyBinEdges, const FloatVector &scaleFactors) :
+        m_thetaBinEdges(thetaBinEdges),
+        m_energyBinEdges(energyBinEdges),
+        m_scaleFactors(scaleFactors)
+    {
+    }
+
+    FloatVector m_thetaBinEdges;
+    FloatVector m_energyBinEdges;
+    FloatVector m_scaleFactors;
+};
+
+typedef std::map<ThetaEnergyCorrectionKey, ThetaEnergyCorrectionTable> ThetaEnergyCorrectionTableMap;
+
+ThetaEnergyCorrectionTableMap &GetThetaEnergyCorrectionTableMap()
+{
+    static ThetaEnergyCorrectionTableMap thetaEnergyCorrectionTableMap;
+    return thetaEnergyCorrectionTableMap;
+}
 
 bool IsStrictlyIncreasing(const FloatVector &values)
 {
@@ -51,7 +80,59 @@ int FindBin(const FloatVector &edges, const float value)
     return -1;
 }
 
+float GetCorrection(const FloatVector &thetaBinEdges, const FloatVector &energyBinEdges, const FloatVector &scaleFactors,
+    const float theta, const float energy)
+{
+    const int thetaBin(FindBin(thetaBinEdges, theta));
+    const int energyBin(FindBin(energyBinEdges, energy));
+
+    if ((thetaBin < 0) || (energyBin < 0))
+        return 1.f;
+
+    const unsigned int nEnergyBins(energyBinEdges.size() - 1);
+    return scaleFactors.at(static_cast<unsigned int>(thetaBin) * nEnergyBins + static_cast<unsigned int>(energyBin));
+}
+
 } // namespace
+
+void LCEnergyCorrectionPlugins::RegisterThetaEnergyCorrection(const std::string &name, const EnergyCorrectionType energyCorrectionType,
+    const FloatVector &thetaBinEdges, const FloatVector &energyBinEdges, const FloatVector &scaleFactors)
+{
+    if (!IsStrictlyIncreasing(thetaBinEdges) || !IsStrictlyIncreasing(energyBinEdges))
+        return;
+
+    const unsigned int nThetaBins(thetaBinEdges.size() - 1);
+    const unsigned int nEnergyBins(energyBinEdges.size() - 1);
+
+    if ((0 == nThetaBins) || (0 == nEnergyBins) || (nThetaBins * nEnergyBins != scaleFactors.size()))
+        return;
+
+    GetThetaEnergyCorrectionTableMap()[ThetaEnergyCorrectionKey(name, energyCorrectionType)] =
+        ThetaEnergyCorrectionTable(thetaBinEdges, energyBinEdges, scaleFactors);
+}
+
+//--------------------------------------------------------------------------
+
+float LCEnergyCorrectionPlugins::GetThetaEnergyCorrectedEnergy(const EnergyCorrectionType energyCorrectionType,
+    const CartesianVector &direction, const float energy)
+{
+    if (direction.GetMagnitude() < std::numeric_limits<float>::epsilon())
+        return energy;
+
+    const float cosTheta(std::max(-1.f, std::min(1.f, direction.GetCosOpeningAngle(CartesianVector(0.f, 0.f, 1.f)))));
+    const float theta(std::acos(cosTheta));
+
+    for (const ThetaEnergyCorrectionTableMap::value_type &mapEntry : GetThetaEnergyCorrectionTableMap())
+    {
+        if (mapEntry.first.second != energyCorrectionType)
+            continue;
+
+        const ThetaEnergyCorrectionTable &table(mapEntry.second);
+        return energy * GetCorrection(table.m_thetaBinEdges, table.m_energyBinEdges, table.m_scaleFactors, theta, energy);
+    }
+
+    return energy;
+}
 
 LCEnergyCorrectionPlugins::NonLinearityCorrection::NonLinearityCorrection(const FloatVector &inputEnergyCorrectionPoints,
         const FloatVector &outputEnergyCorrectionPoints) :
