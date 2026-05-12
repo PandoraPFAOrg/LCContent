@@ -32,6 +32,7 @@ ConeBasedMergingAlgorithm::ConeBasedMergingAlgorithm() :
     m_minDaughterHadronicEnergy(1.f),
     m_maxTrackClusterChi(2.5f),
     m_maxTrackClusterDChi2(1.f),
+    m_useCorrectedHadronicEnergyForTrackComparison(false),
     m_minCosConeAngleWrtRadial(0.25f),
     m_cosConeAngleWrtRadialCut1(0.5f),
     m_minHitSeparationCut1(std::sqrt(1000.f)),
@@ -129,19 +130,28 @@ StatusCode ConeBasedMergingAlgorithm::Run()
             if (sigmaE < std::numeric_limits<float>::epsilon())
                 return STATUS_CODE_FAILURE;
 
-            const float parentHadronicEnergy(pBestParentCluster->GetCorrectedHadronicEnergy(this->GetPandora()));
-            const float mergedHadronicEnergy(pBestParentCluster->GetHadronicEnergy() + pDaughterCluster->GetHadronicEnergy());
-            // Use the parent direction as the merged-cluster direction estimate; the daughter has passed the parent-cone test.
-            const CartesianVector &parentDirection(pBestParentCluster->GetFitToAllHitsResult().IsFitSuccessful() ?
-                pBestParentCluster->GetFitToAllHitsResult().GetDirection() : pBestParentCluster->GetInitialDirection());
-            const float mergedCorrectedHadronicEnergy(LCEnergyCorrectionPlugins::GetThetaEnergyCorrectedEnergy(
-                pandora::HADRONIC, parentDirection, mergedHadronicEnergy));
-            const float addedCorrectedHadronicEnergy(std::max(0.f, mergedCorrectedHadronicEnergy - parentHadronicEnergy));
+            float parentHadronicEnergy(pBestParentCluster->GetHadronicEnergy());
+            float mergedHadronicEnergy(parentHadronicEnergy + pDaughterCluster->GetHadronicEnergy());
+            float addedHadronicEnergy(pDaughterCluster->GetHadronicEnergy());
 
-            const float chi((mergedCorrectedHadronicEnergy - trackEnergySum) / sigmaE);
+            if (m_useCorrectedHadronicEnergyForTrackComparison)
+            {
+                parentHadronicEnergy = pBestParentCluster->GetCorrectedHadronicEnergy(this->GetPandora());
+                mergedHadronicEnergy = pBestParentCluster->GetHadronicEnergy() + pDaughterCluster->GetHadronicEnergy();
+
+                // Use the parent direction as the merged-cluster direction estimate; the daughter has passed the parent-cone test.
+                const CartesianVector &parentDirection(pBestParentCluster->GetFitToAllHitsResult().IsFitSuccessful() ?
+                    pBestParentCluster->GetFitToAllHitsResult().GetDirection() : pBestParentCluster->GetInitialDirection());
+
+                mergedHadronicEnergy = LCEnergyCorrectionPlugins::GetThetaEnergyCorrectedEnergy(pandora::HADRONIC,
+                    parentDirection, mergedHadronicEnergy);
+                addedHadronicEnergy = std::max(0.f, mergedHadronicEnergy - parentHadronicEnergy);
+            }
+
+            const float chi((mergedHadronicEnergy - trackEnergySum) / sigmaE);
             const float chi0((parentHadronicEnergy - trackEnergySum) / sigmaE);
 
-            if (addedCorrectedHadronicEnergy > m_minDaughterHadronicEnergy)
+            if (addedHadronicEnergy > m_minDaughterHadronicEnergy)
             {
                 if ((chi > m_maxTrackClusterChi) || ((chi * chi - chi0 * chi0) > m_maxTrackClusterDChi2))
                     continue;
@@ -312,6 +322,9 @@ StatusCode ConeBasedMergingAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MaxTrackClusterDChi2", m_maxTrackClusterDChi2));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "UseCorrectedHadronicEnergyForTrackComparison", m_useCorrectedHadronicEnergyForTrackComparison));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MinCosConeAngleWrtRadial", m_minCosConeAngleWrtRadial));
