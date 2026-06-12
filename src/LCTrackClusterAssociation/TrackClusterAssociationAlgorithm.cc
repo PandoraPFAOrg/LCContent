@@ -45,7 +45,8 @@ TrackClusterAssociationAlgorithm::TrackClusterAssociationAlgorithm() :
     m_maxTrackClusterDistance(10.f),
     m_maxSearchLayer(9),
     m_parallelDistanceCut(100.f),
-    m_minTrackClusterCosAngle(0.f)
+    m_minTrackClusterCosAngle(0.f),
+    m_useCorrectedHadronicEnergyForTrackComparison(false)
 {
 }
 
@@ -184,9 +185,12 @@ StatusCode TrackClusterAssociationAlgorithm::Run()
                     continue;
                 }
 
-                const float energyDifference(std::fabs(pCluster->GetHadronicEnergy() - pTrack->GetEnergyAtDca()));
+                const float clusterHadronicEnergy(pCluster->GetHadronicEnergy());
+                const float trackComparisonEnergy(m_useCorrectedHadronicEnergyForTrackComparison ?
+                    pCluster->GetCorrectedHadronicEnergy(this->GetPandora()) : clusterHadronicEnergy);
+                const float energyDifference(std::fabs(trackComparisonEnergy - pTrack->GetEnergyAtDca()));
 
-                if (pCluster->GetHadronicEnergy() > m_lowEnergyCut)
+                if (clusterHadronicEnergy > m_lowEnergyCut)
                 {
                     if ((trackClusterDistance < minDistance) || ((trackClusterDistance == minDistance) && (energyDifference < minEnergyDifference)))
                     {
@@ -246,6 +250,9 @@ StatusCode TrackClusterAssociationAlgorithm::ReadSettings(const TiXmlHandle xmlH
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MinTrackClusterCosAngle", m_minTrackClusterCosAngle));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "UseCorrectedHadronicEnergyForTrackComparison", m_useCorrectedHadronicEnergyForTrackComparison));
 
     return STATUS_CODE_SUCCESS;
 }
