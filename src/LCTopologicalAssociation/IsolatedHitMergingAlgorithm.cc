@@ -153,7 +153,7 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
 
         const Cluster *pBestHostCluster(NULL);
         float bestHostClusterEnergy(0.f);
-        float minDistance(std::numeric_limits<float>::max());
+        float minDistance(m_maxRecombinationDistance);
 
         for (const ClusterCache &cache : clusterCaches)
         {
