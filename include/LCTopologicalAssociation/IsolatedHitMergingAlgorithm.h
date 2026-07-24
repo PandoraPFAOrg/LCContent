@@ -33,7 +33,7 @@ public:
     {
         const pandora::Cluster         *pCluster;    ///< Pointer to the cluster (nullptr if deleted)
         pandora::CartesianVector        centroid;    ///< Centroid at inner pseudo-layer
-        float                           energy;      ///< Cluster energy (possibly dual-readout corrected)
+        float                           energy;      ///< Cluster energy (raw or plugin-corrected hadronic)
         pandora::CartesianVector        direction;   ///< Cluster initial direction (for opening-angle preselection)
         bool                            isEm;        ///< Whether the cluster is identified as an EM shower
         bool                            isCharged;   ///< Whether the cluster has an associated track
@@ -73,7 +73,8 @@ private:
                                          float &distance) const;
 
     /**
-     *  @brief  Get the energy of a cluster, optionally using dual-readout corrections.
+     *  @brief  Get the energy of a cluster: raw hadronic energy, or the EnergyCorrections-plugin
+     *          corrected hadronic energy when UseCorrectedHadronicEnergy is set.
      *
      *  @param  pCluster  address of the cluster
      *  @param  energy    output energy
@@ -87,7 +88,7 @@ private:
     float                   m_maxRecombinationDistance;     ///< Max distance between calo hit and cluster to allow addition of hit
     float                   m_minCosOpeningAngle;           ///< Min cos(angle) between hit and cluster directions to allow addition of hit
 
-    bool                    m_useDualReadout;               ///< Whether to use dual-readout energy corrections (default: false)
+    bool                    m_useCorrectedHadronicEnergy;   ///< Use the plugin-corrected hadronic energy instead of raw GetHadronicEnergy() (default: false)
     bool                    m_ignorePhotons;                ///< Whether to ignore photons when merging isolated hits (default: false)
     bool                    m_ignoreCharged;                ///< Whether to ignore charged clusters when merging isolated hits (default: false)
     bool                    m_useAngularDistance;           ///< Whether to use angular (1-cos(angle)) distance instead of Cartesian (default: false)

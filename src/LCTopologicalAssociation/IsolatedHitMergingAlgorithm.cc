@@ -26,7 +26,7 @@ IsolatedHitMergingAlgorithm::IsolatedHitMergingAlgorithm() :
     m_minHitsInCluster(4),
     m_maxRecombinationDistance(250.f),
     m_minCosOpeningAngle(0.f),
-    m_useDualReadout(false),
+    m_useCorrectedHadronicEnergy(false),
     m_ignorePhotons(false),
     m_ignoreCharged(false),
     m_useAngularDistance(false)
@@ -265,7 +265,7 @@ StatusCode IsolatedHitMergingAlgorithm::GetDistanceToHit(const ClusterCache &cac
 
 StatusCode IsolatedHitMergingAlgorithm::GetClusterEnergy(const Cluster *const pCluster, float &energy) const
 {
-    if (!m_useDualReadout)
+    if (!m_useCorrectedHadronicEnergy)
     {
         energy = pCluster->GetHadronicEnergy();
         return STATUS_CODE_SUCCESS;
@@ -302,7 +302,7 @@ StatusCode IsolatedHitMergingAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
         "MinCosOpeningAngle", m_minCosOpeningAngle));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "UseDualReadout", m_useDualReadout));
+        "UseCorrectedHadronicEnergy", m_useCorrectedHadronicEnergy));
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "UseAngularDistance", m_useAngularDistance));
