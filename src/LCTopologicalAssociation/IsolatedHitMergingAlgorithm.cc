@@ -7,12 +7,14 @@
  */
 
 #include "Pandora/AlgorithmHeaders.h"
+#include "Pandora/PdgTable.h"
 
 #include "LCHelpers/SortingHelper.h"
 
 #include "LCTopologicalAssociation/IsolatedHitMergingAlgorithm.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace pandora;
 
@@ -23,7 +25,11 @@ IsolatedHitMergingAlgorithm::IsolatedHitMergingAlgorithm() :
     m_shouldUseCurrentClusterList(true),
     m_minHitsInCluster(4),
     m_maxRecombinationDistance(250.f),
-    m_minCosOpeningAngle(0.f)
+    m_minCosOpeningAngle(0.f),
+    m_useDualReadout(false),
+    m_ignorePhotons(false),
+    m_ignoreCharged(false),
+    m_useAngularDistance(false)
 {
 }
 
@@ -64,11 +70,14 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
     ClusterVector clusterVector(clusterList.begin(), clusterList.end());
     std::sort(clusterVector.begin(), clusterVector.end(), SortingHelper::SortClustersByInnerLayer);
 
+    // Build cache for remaining clusters
+    std::vector<ClusterCache> clusterCaches;
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->BuildClusterCache(clusterVector, clusterCaches));
 
     // FIRST PART - find "small" clusters, below threshold number of calo hits, delete them and associate hits with other clusters
-    for (ClusterVector::iterator iterI = clusterVector.begin(), iterIEnd = clusterVector.end(); iterI != iterIEnd; ++iterI)
+    for (std::size_t iClus = 0; iClus < clusterVector.size(); ++iClus)
     {
-        const Cluster *const pClusterToDelete = *iterI;
+        const Cluster *const pClusterToDelete = clusterVector[iClus];
 
         if (NULL == pClusterToDelete)
             continue;
@@ -85,7 +94,9 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
         pClusterToDelete->GetOrderedCaloHitList().FillCaloHitList(caloHitList);
 
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::Delete(*this, pClusterToDelete));
-        *iterI = NULL;
+        // Null both the vector entry and the parallel cache entry.
+        clusterVector[iClus]          = NULL;
+        clusterCaches[iClus].pCluster = NULL;
 
         // Redistribute hits that used to be in cluster I amongst other clusters
         for (CaloHitList::const_iterator hitIter = caloHitList.begin(), hitIterEnd = caloHitList.end(); hitIter != hitIterEnd; ++hitIter)
@@ -97,25 +108,27 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
             float minDistance(m_maxRecombinationDistance);
 
             // Find the most appropriate cluster for this newly-available hit
-            for (ClusterVector::const_iterator iterJ = clusterVector.begin(), iterJEnd = clusterVector.end(); iterJ != iterJEnd; ++iterJ)
+            for (const ClusterCache &cache : clusterCaches)
             {
-                const Cluster *const pNewHostCluster = *iterJ;
-
-                if (NULL == pNewHostCluster)
+                if (!cache.pCluster)
                     continue;
 
-                if (pNewHostCluster->GetNCaloHits() < nCaloHits)
+                if (cache.pCluster->GetNCaloHits() < nCaloHits)
                     continue;
 
-                const float distance(this->GetDistanceToHit(pNewHostCluster, pCaloHit));
-                const float hostClusterEnergy(pNewHostCluster->GetHadronicEnergy());
+                if (m_ignoreCharged && cache.isCharged)
+                    continue;
+
+                float distance(std::numeric_limits<float>::max());
+                PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetDistanceToHit(cache, pCaloHit, distance));
 
                 // In event of equidistant host candidates, choose highest energy cluster
-                if ((distance < minDistance) || ((distance == minDistance) && (hostClusterEnergy > bestHostClusterEnergy)))
+                if ((distance < minDistance) ||
+                    (distance == minDistance && cache.energy > bestHostClusterEnergy))
                 {
                     minDistance = distance;
-                    pBestHostCluster = pNewHostCluster;
-                    bestHostClusterEnergy = hostClusterEnergy;
+                    pBestHostCluster = cache.pCluster;
+                    bestHostClusterEnergy = cache.energy;
                 }
             }
 
@@ -127,37 +140,39 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
     }
 
 
-    // SECOND PART - loop over the remaining available isolated hits, and associate them with other clusters
+    // SECOND PART - loop over isolated hits and associate each with the best cluster.
     const CaloHitList *pCaloHitList = NULL;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pCaloHitList));
 
-    for (CaloHitList::const_iterator hitIterI = pCaloHitList->begin(); hitIterI != pCaloHitList->end(); ++hitIterI)
+    for (CaloHitList::const_iterator hitIter = pCaloHitList->begin(); hitIter != pCaloHitList->end(); ++hitIter)
     {
-        const CaloHit *const pCaloHit = *hitIterI;
+        const CaloHit *const pCaloHit = *hitIter;
 
         if (!pCaloHit->IsIsolated() || !PandoraContentApi::IsAvailable(*this, pCaloHit))
             continue;
 
         const Cluster *pBestHostCluster(NULL);
-        float bestHostClusterEnergy(0.);
-        float minDistance(m_maxRecombinationDistance);
+        float bestHostClusterEnergy(0.f);
+        float minDistance(std::numeric_limits<float>::max());
 
-        // Find most appropriate cluster for this isolated hit
-        for (ClusterVector::const_iterator iterJ = clusterVector.begin(), iterJEnd = clusterVector.end(); iterJ != iterJEnd; ++iterJ)
+        for (const ClusterCache &cache : clusterCaches)
         {
-            const Cluster *const pCluster = *iterJ;
-
-            if (NULL == pCluster)
+            if (!cache.pCluster)
+                continue;
+            if (m_ignorePhotons && cache.isEm && !cache.isCharged)
+                continue;
+            if (m_ignoreCharged && cache.isCharged)
                 continue;
 
-            const float distance(this->GetDistanceToHit(pCluster, pCaloHit));
-            const float hostClusterEnergy(pCluster->GetHadronicEnergy());
+            float distance(m_maxRecombinationDistance);
+            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetDistanceToHit(cache, pCaloHit, distance));
 
-            if ((distance < minDistance) || ((distance == minDistance) && (hostClusterEnergy > bestHostClusterEnergy)))
+            if ((distance < minDistance) ||
+                (distance == minDistance && cache.energy > bestHostClusterEnergy))
             {
-                minDistance = distance;
-                pBestHostCluster = pCluster;
-                bestHostClusterEnergy = hostClusterEnergy;
+                minDistance          = distance;
+                pBestHostCluster     = cache.pCluster;
+                bestHostClusterEnergy = cache.energy;
             }
         }
 
@@ -172,28 +187,99 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-float IsolatedHitMergingAlgorithm::GetDistanceToHit(const Cluster *const pCluster, const CaloHit *const pCaloHit) const
+StatusCode IsolatedHitMergingAlgorithm::BuildClusterCache(const ClusterVector &clusterVector,
+                                                          std::vector<ClusterCache> &clusterCaches) const
 {
-    // Apply simple preselection using cosine of opening angle between the hit and cluster directions
-    if (pCaloHit->GetExpectedDirection().GetCosOpeningAngle(pCluster->GetInitialDirection()) < m_minCosOpeningAngle)
-        return std::numeric_limits<float>::max();
+    clusterCaches.clear();
+    clusterCaches.reserve(clusterVector.size());
 
-    float minDistanceSquared(std::numeric_limits<float>::max());
-    const CartesianVector &hitPosition(pCaloHit->GetPositionVector());
-    const OrderedCaloHitList &orderedCaloHitList(pCluster->GetOrderedCaloHitList());
-
-    for (OrderedCaloHitList::const_iterator iter = orderedCaloHitList.begin(), iterEnd = orderedCaloHitList.end(); iter != iterEnd; ++iter)
+    for (const Cluster *const pCluster : clusterVector)
     {
-        const float distanceSquared((pCluster->GetCentroid(iter->first) - hitPosition).GetMagnitudeSquared());
+        ClusterCache cache;
+        cache.pCluster = pCluster; // may be nullptr if already deleted in Part 1
 
-        if (distanceSquared < minDistanceSquared)
-            minDistanceSquared = distanceSquared;
+        if (pCluster)
+        {
+            cache.centroid  = pCluster->GetCentroid(pCluster->GetInnerPseudoLayer());
+            cache.direction = pCluster->GetInitialDirection();
+            cache.isCharged = !pCluster->GetAssociatedTrackList().empty();
+            cache.isEm      = pCluster->GetParticleId() == pandora::PHOTON;
+            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetClusterEnergy(pCluster, cache.energy));
+        }
+        else
+        {
+            cache.energy    = 0.f;
+            cache.isEm      = false;
+            cache.isCharged = false;
+        }
+
+        clusterCaches.push_back(cache);
     }
 
-    if (minDistanceSquared < std::numeric_limits<float>::max())
-        return std::sqrt(minDistanceSquared);
+    return STATUS_CODE_SUCCESS;
+}
 
-    return std::numeric_limits<float>::max();
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+StatusCode IsolatedHitMergingAlgorithm::GetDistanceToHit(const ClusterCache &cache,
+                                                         const CaloHit *const pCaloHit,
+                                                         float &distance) const
+{
+    // Apply simple preselection using cosine of opening angle between the hit and cluster directions
+    if (pCaloHit->GetExpectedDirection().GetCosOpeningAngle(cache.direction) < m_minCosOpeningAngle)
+    {
+        distance = std::numeric_limits<float>::max();
+        return STATUS_CODE_SUCCESS;
+    }
+
+    const CartesianVector &hitPosition(pCaloHit->GetPositionVector());
+    distance = std::numeric_limits<float>::max();
+
+    // Angular mode: use (1 - cosA) as the distance metric.
+    if (m_useAngularDistance)
+    {
+        float cosA = cache.centroid.GetCosOpeningAngle(hitPosition);
+        cosA = std::max(-1.f, std::min(1.f, cosA));
+        distance = 1.f - cosA;
+    }
+    else
+    {
+        const OrderedCaloHitList &orderedCaloHitList(cache.pCluster->GetOrderedCaloHitList());
+        float minDistanceSquared = std::numeric_limits<float>::max();
+
+        for (OrderedCaloHitList::const_iterator iter = orderedCaloHitList.begin(), iterEnd = orderedCaloHitList.end(); iter != iterEnd; ++iter)
+        {
+          const float distanceSquared = (cache.pCluster->GetCentroid(iter->first) - hitPosition).GetMagnitudeSquared();
+
+          if (distanceSquared < minDistanceSquared)
+              minDistanceSquared = distanceSquared;
+        }
+
+        distance = std::sqrt(minDistanceSquared);
+    }
+
+    return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+StatusCode IsolatedHitMergingAlgorithm::GetClusterEnergy(const Cluster *const pCluster, float &energy) const
+{
+    if (!m_useDualReadout)
+    {
+        energy = pCluster->GetHadronicEnergy();
+        return STATUS_CODE_SUCCESS;
+    }
+
+    const pandora::EnergyCorrections *const pEnergyCorrections(PandoraContentApi::GetPlugins(*this)->GetEnergyCorrections());
+    if (!pEnergyCorrections)
+        return STATUS_CODE_FAILURE;
+
+    float corrEm(0.f), corrHad(0.f);
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, pEnergyCorrections->MakeEnergyCorrections(pCluster, corrEm, corrHad));
+    energy = corrHad;
+
+    return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -214,6 +300,18 @@ StatusCode IsolatedHitMergingAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
 
     PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
         "MinCosOpeningAngle", m_minCosOpeningAngle));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "UseDualReadout", m_useDualReadout));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "UseAngularDistance", m_useAngularDistance));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "IgnorePhotons", m_ignorePhotons));
+
+    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
+        "IgnoreCharged", m_ignoreCharged));
 
     return STATUS_CODE_SUCCESS;
 }
