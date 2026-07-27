@@ -119,8 +119,7 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
                 if (m_ignoreCharged && cache.isCharged)
                     continue;
 
-                float distance(std::numeric_limits<float>::max());
-                PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetDistanceToHit(cache, pCaloHit, distance));
+                float distance = GetDistanceToHit(cache, pCaloHit);
 
                 // In event of equidistant host candidates, choose highest energy cluster
                 if ((distance < minDistance) ||
@@ -144,10 +143,8 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
     const CaloHitList *pCaloHitList = NULL;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pCaloHitList));
 
-    for (CaloHitList::const_iterator hitIter = pCaloHitList->begin(); hitIter != pCaloHitList->end(); ++hitIter)
+    for (const auto* pCaloHit : *pCaloHitList)
     {
-        const CaloHit *const pCaloHit = *hitIter;
-
         if (!pCaloHit->IsIsolated() || !PandoraContentApi::IsAvailable(*this, pCaloHit))
             continue;
 
@@ -164,14 +161,13 @@ StatusCode IsolatedHitMergingAlgorithm::Run()
             if (m_ignoreCharged && cache.isCharged)
                 continue;
 
-            float distance(m_maxRecombinationDistance);
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetDistanceToHit(cache, pCaloHit, distance));
+            float distance = GetDistanceToHit(cache, pCaloHit);
 
             if ((distance < minDistance) ||
                 (distance == minDistance && cache.energy > bestHostClusterEnergy))
             {
-                minDistance          = distance;
-                pBestHostCluster     = cache.pCluster;
+                minDistance           = distance;
+                pBestHostCluster      = cache.pCluster;
                 bestHostClusterEnergy = cache.energy;
             }
         }
@@ -221,19 +217,17 @@ StatusCode IsolatedHitMergingAlgorithm::BuildClusterCache(const ClusterVector &c
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode IsolatedHitMergingAlgorithm::GetDistanceToHit(const ClusterCache &cache,
-                                                         const CaloHit *const pCaloHit,
-                                                         float &distance) const
+float IsolatedHitMergingAlgorithm::GetDistanceToHit(const ClusterCache &cache,
+                                                    const CaloHit *const pCaloHit) const
 {
     // Apply simple preselection using cosine of opening angle between the hit and cluster directions
     if (pCaloHit->GetExpectedDirection().GetCosOpeningAngle(cache.direction) < m_minCosOpeningAngle)
     {
-        distance = std::numeric_limits<float>::max();
-        return STATUS_CODE_SUCCESS;
+        return std::numeric_limits<float>::max();
     }
 
     const CartesianVector &hitPosition(pCaloHit->GetPositionVector());
-    distance = std::numeric_limits<float>::max();
+    float distance = std::numeric_limits<float>::max();
 
     // Angular mode: use (1 - cosA) as the distance metric.
     if (m_useAngularDistance)
@@ -258,7 +252,7 @@ StatusCode IsolatedHitMergingAlgorithm::GetDistanceToHit(const ClusterCache &cac
         distance = std::sqrt(minDistanceSquared);
     }
 
-    return STATUS_CODE_SUCCESS;
+    return distance;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

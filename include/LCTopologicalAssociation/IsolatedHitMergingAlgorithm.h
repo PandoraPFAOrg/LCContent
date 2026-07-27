@@ -66,11 +66,9 @@ private:
      *
      *  @param  cache        precomputed cluster info
      *  @param  pCaloHit     address of the calo hit
-     *  @param  distance     output: distance metric (angular 1-cosA or Cartesian mm)
      */
-    pandora::StatusCode GetDistanceToHit(const ClusterCache &cache,
-                                         const pandora::CaloHit *const pCaloHit,
-                                         float &distance) const;
+    float GetDistanceToHit(const ClusterCache &cache,
+                           const pandora::CaloHit *const pCaloHit) const;
 
     /**
      *  @brief  Get the energy of a cluster: raw hadronic energy, or the EnergyCorrections-plugin
