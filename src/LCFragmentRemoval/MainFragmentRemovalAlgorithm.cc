@@ -14,6 +14,7 @@
 #include "LCHelpers/ReclusterHelper.h"
 #include "LCHelpers/SortingHelper.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 using namespace pandora;
@@ -125,12 +126,16 @@ StatusCode MainFragmentRemovalAlgorithm::Run()
     ClusterSet affectedClusters;
     ChargedClusterContactMap chargedClusterContactMap;
 
+    // Bounding boxes and the record of which clusters each merge changed, both reused across passes.
+    ClusterContactCache contactCache;
+
     while (shouldRecalculate)
     {
         shouldRecalculate = false;
         const Cluster *pBestParentCluster(NULL), *pBestDaughterCluster(NULL);
 
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetChargedClusterContactMap(isFirstPass, affectedClusters, chargedClusterContactMap));
+        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetChargedClusterContactMap(isFirstPass, affectedClusters, contactCache,
+            chargedClusterContactMap));
 
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetClusterMergingCandidates(chargedClusterContactMap, pBestParentCluster,
             pBestDaughterCluster));
@@ -143,6 +148,8 @@ StatusCode MainFragmentRemovalAlgorithm::Run()
             chargedClusterContactMap.erase(chargedClusterContactMap.find(pBestDaughterCluster));
             shouldRecalculate = true;
 
+            contactCache.RecordMerge(pBestParentCluster, pBestDaughterCluster);
+
             PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::MergeAndDeleteClusters(*this, pBestParentCluster,
                 pBestDaughterCluster));
         }
@@ -154,7 +161,7 @@ StatusCode MainFragmentRemovalAlgorithm::Run()
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 StatusCode MainFragmentRemovalAlgorithm::GetChargedClusterContactMap(bool &isFirstPass, const ClusterSet &affectedClusters,
-    ChargedClusterContactMap &chargedClusterContactMap) const
+    ClusterContactCache &contactCache, ChargedClusterContactMap &chargedClusterContactMap) const
 {
     const ClusterList *pClusterList = NULL;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pClusterList));
@@ -173,10 +180,24 @@ StatusCode MainFragmentRemovalAlgorithm::GetChargedClusterContactMap(bool &isFir
         }
     }
 
+    // Position of each cluster in the filtered list. Contact vectors are built by walking that list in
+    // order, so an in-place update has to know where in it a cluster belongs.
+    ClusterToIndexMap clusterToIndex;
+    {
+        unsigned int clusterIndex(0);
+
+        for (const Cluster *const pCluster : clusterList)
+            clusterToIndex.emplace(pCluster, clusterIndex++);
+    }
+
     // Create cluster contacts
+    ClusterVector candidateParents, changedClusters;
+    ClusterSet changedClusterSet;
+
     for (ClusterList::const_iterator iterI = clusterList.begin(), iterIEnd = clusterList.end(); iterI != iterIEnd; ++iterI)
     {
         const Cluster *const pDaughterCluster = *iterI;
+        bool isFullRebuild(true);
 
         // Identify whether cluster contacts need to be recalculated
         if (!isFirstPass)
@@ -184,20 +205,50 @@ StatusCode MainFragmentRemovalAlgorithm::GetChargedClusterContactMap(bool &isFir
             if (affectedClusters.end() == affectedClusters.find(pDaughterCluster))
                 continue;
 
-            ChargedClusterContactMap::iterator pastEntryIter = chargedClusterContactMap.find(pDaughterCluster);
+            // A merge changes exactly two clusters, and a cluster contact is a function of its two clusters
+            // and nothing else, so all but a handful of this daughter's contacts are still bit-for-bit what
+            // they were. Update those few rather than rebuilding the vector - unless the daughter's own hits
+            // moved, in which case every one of its contacts has changed.
+            changedClusters.clear();
+            contactCache.GetClustersChangedSince(pDaughterCluster, changedClusters);
+            changedClusterSet.clear();
+            changedClusterSet.insert(changedClusters.begin(), changedClusters.end());
+            isFullRebuild = (changedClusterSet.end() != changedClusterSet.find(pDaughterCluster));
 
-            if (chargedClusterContactMap.end() != pastEntryIter)
-                chargedClusterContactMap.erase(pastEntryIter);
+            if (isFullRebuild)
+            {
+                ChargedClusterContactMap::iterator pastEntryIter = chargedClusterContactMap.find(pDaughterCluster);
+
+                if (chargedClusterContactMap.end() != pastEntryIter)
+                    chargedClusterContactMap.erase(pastEntryIter);
+            }
         }
 
         // Apply simple daughter selection cuts
-        if (!pDaughterCluster->GetAssociatedTrackList().empty())
-            continue;
+        if (!pDaughterCluster->GetAssociatedTrackList().empty() ||
+            (pDaughterCluster->GetNCaloHits() < m_minDaughterCaloHits) || (pDaughterCluster->GetHadronicEnergy() < m_minDaughterHadronicEnergy))
+        {
+            // A rebuild has already dropped the entry; an update has to, since a rebuild would not put one back.
+            if (!isFullRebuild)
+                chargedClusterContactMap.erase(pDaughterCluster);
 
-        if ((pDaughterCluster->GetNCaloHits() < m_minDaughterCaloHits) || (pDaughterCluster->GetHadronicEnergy() < m_minDaughterHadronicEnergy))
+            // No contacts is a state that reflects every merge, so say so and keep the replay list short.
+            contactCache.MarkUpToDate(pDaughterCluster);
             continue;
+        }
 
-        // Calculate the cluster contact information
+        if (!isFullRebuild)
+        {
+            this->UpdateChargedClusterContacts(pDaughterCluster, changedClusters, changedClusterSet, clusterToIndex, contactCache, chargedClusterContactMap);
+            continue;
+        }
+
+        // Enumerate the parent candidates that could contribute, in cluster list order, before evaluating any
+        // of them. Splitting enumeration from evaluation is what keeps the expensive part off the pairs that
+        // cannot pass, and it is the shape a parallel evaluate/serial apply would need.
+        const ClusterBoundingBox &daughterBoundingBox(contactCache.GetBoundingBox(pDaughterCluster));
+        candidateParents.clear();
+
         for (ClusterList::const_iterator iterJ = clusterList.begin(), iterJEnd = clusterList.end(); iterJ != iterJEnd; ++iterJ)
         {
             const Cluster *const pParentCluster = *iterJ;
@@ -208,17 +259,123 @@ StatusCode MainFragmentRemovalAlgorithm::GetChargedClusterContactMap(bool &isFir
             if (pParentCluster->GetAssociatedTrackList().empty())
                 continue;
 
-            const ChargedClusterContact chargedClusterContact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters);
+            if (!this->CouldPassClusterContactCuts(pDaughterCluster, daughterBoundingBox, pParentCluster, contactCache))
+                continue;
+
+            candidateParents.push_back(pParentCluster);
+        }
+
+        // Calculate the cluster contact information
+        for (const Cluster *const pParentCluster : candidateParents)
+        {
+            const ChargedClusterContact chargedClusterContact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters, contactCache);
 
             if (this->PassesClusterContactCuts(chargedClusterContact))
             {
                 chargedClusterContactMap[pDaughterCluster].push_back(chargedClusterContact);
             }
         }
+
+        contactCache.MarkUpToDate(pDaughterCluster);
     }
     isFirstPass = false;
 
     return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void MainFragmentRemovalAlgorithm::UpdateChargedClusterContacts(const Cluster *const pDaughterCluster, const ClusterVector &changedClusters,
+    const ClusterSet &changedClusterSet, const ClusterToIndexMap &clusterToIndex, ClusterContactCache &contactCache,
+    ChargedClusterContactMap &chargedClusterContactMap) const
+{
+    ChargedClusterContactMap::iterator mapIter = chargedClusterContactMap.find(pDaughterCluster);
+
+    ChargedClusterContactVector contactVector;
+
+    if (chargedClusterContactMap.end() != mapIter)
+        contactVector.swap(mapIter->second);
+
+    // Keep every contact a rebuild would have reproduced unchanged: all of them except those with a cluster
+    // some merge has since altered, and those with a parent that has dropped out of the filtered cluster
+    // list, which a rebuild would never have reached.
+    ChargedClusterContactVector updatedContactVector;
+    updatedContactVector.reserve(contactVector.size() + changedClusters.size());
+
+    for (const ChargedClusterContact &chargedClusterContact : contactVector)
+    {
+        const Cluster *const pParentCluster(chargedClusterContact.GetParentCluster());
+
+        if (changedClusterSet.end() != changedClusterSet.find(pParentCluster))
+            continue;
+
+        if (clusterToIndex.end() == clusterToIndex.find(pParentCluster))
+            continue;
+
+        updatedContactVector.push_back(chargedClusterContact);
+    }
+
+    // Recompute the contacts those merges invalidated, applying exactly the parent selection and the contact
+    // cuts the enumeration loop applies.
+    const ClusterBoundingBox &daughterBoundingBox(contactCache.GetBoundingBox(pDaughterCluster));
+
+    for (const Cluster *const pParentCluster : changedClusters)
+    {
+        if ((clusterToIndex.end() == clusterToIndex.find(pParentCluster)) || (pDaughterCluster == pParentCluster) ||
+            pParentCluster->GetAssociatedTrackList().empty() ||
+            !this->CouldPassClusterContactCuts(pDaughterCluster, daughterBoundingBox, pParentCluster, contactCache))
+        {
+            continue;
+        }
+
+        const ChargedClusterContact chargedClusterContact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters, contactCache);
+
+        if (this->PassesClusterContactCuts(chargedClusterContact))
+            updatedContactVector.push_back(chargedClusterContact);
+    }
+
+    // A rebuild walks the cluster list in order, so the vector has to end up in that order too: the merging
+    // candidate search breaks exact ties on the first entry it meets.
+    std::sort(updatedContactVector.begin(), updatedContactVector.end(),
+        [&clusterToIndex](const ChargedClusterContact &lhs, const ChargedClusterContact &rhs)
+        { return clusterToIndex.at(lhs.GetParentCluster()) < clusterToIndex.at(rhs.GetParentCluster()); });
+
+    // A rebuild only creates a map entry when it stores a contact, so an emptied vector leaves no entry.
+    if (updatedContactVector.empty())
+    {
+        if (chargedClusterContactMap.end() != mapIter)
+            chargedClusterContactMap.erase(mapIter);
+    }
+    else if (chargedClusterContactMap.end() != mapIter)
+    {
+        mapIter->second.swap(updatedContactVector);
+    }
+    else
+    {
+        chargedClusterContactMap[pDaughterCluster].swap(updatedContactVector);
+    }
+
+    contactCache.MarkUpToDate(pDaughterCluster);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool MainFragmentRemovalAlgorithm::CouldPassClusterContactCuts(const Cluster *const pDaughterCluster, const ClusterBoundingBox &daughterBoundingBox,
+    const Cluster *const pParentCluster, ClusterContactCache &contactCache) const
+{
+    // PassesClusterContactCuts opens by discarding any contact whose closest hit-hit separation exceeds
+    // m_contactCutMaxDistance, and every later term only ever adds reasons to keep one. So a pair whose
+    // clusters cannot have two hits that close cannot enter the map, whatever else is true of it.
+    //
+    // ClusterContact reports that separation as float max in two situations: when the hit loop genuinely
+    // found nothing closer, and when the loop never ran because the initial directions of the two clusters
+    // open by more than m_minCosOpeningAngle. Either way the contact is discarded, so both tests below are
+    // rejections the unfiltered code makes too - they are just made before the hits are touched rather
+    // than after. The cosine is the same call on the same cached directions that ClusterContact would make.
+    if (pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()) < m_contactParameters.m_minCosOpeningAngle)
+        return false;
+
+    return !daughterBoundingBox.IsSeparatedFrom(contactCache.GetBoundingBox(pParentCluster), m_contactCutMaxDistance);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -582,8 +739,8 @@ StatusCode MainFragmentRemovalAlgorithm::GetAffectedClusters(const ChargedCluste
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 ChargedClusterContact::ChargedClusterContact(const Pandora &pandora, const Cluster *const pDaughterCluster, const Cluster *const pParentCluster,
-        const Parameters &parameters) :
-    ClusterContact(pandora, pDaughterCluster, pParentCluster, parameters),
+        const Parameters &parameters, ClusterContactCache &contactCache) :
+    ClusterContact(pandora, pDaughterCluster, pParentCluster, parameters, contactCache),
     m_coneFraction2(FragmentRemovalHelper::GetFractionOfHitsInCone(pandora, pDaughterCluster, pParentCluster, parameters.m_coneCosineHalfAngle2)),
     m_coneFraction3(FragmentRemovalHelper::GetFractionOfHitsInCone(pandora, pDaughterCluster, pParentCluster, parameters.m_coneCosineHalfAngle3)),
     m_meanDistanceToHelix(std::numeric_limits<float>::max()),

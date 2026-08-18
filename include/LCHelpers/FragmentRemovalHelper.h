@@ -11,6 +11,8 @@
 #include "Pandora/PandoraInternal.h"
 #include "Pandora/StatusCodes.h"
 
+#include "LCHelpers/ClusterProximityHelper.h"
+
 namespace lc_content
 {
 
@@ -40,9 +42,10 @@ public:
      *  @param  pDaughterCluster address of the daughter candidate cluster
      *  @param  pParentCluster address of the parent candidate cluster
      *  @param  parameters the cluster contact parameters
+     *  @param  contactCache cache of the per-cluster bounding boxes the hit comparison uses
      */
     ClusterContact(const pandora::Pandora &pandora, const pandora::Cluster *const pDaughterCluster, const pandora::Cluster *const pParentCluster,
-        const Parameters &parameters);
+        const Parameters &parameters, ClusterContactCache &contactCache);
 
     /**
      *  @brief  Get the address of the daughter candidate cluster
@@ -108,8 +111,10 @@ protected:
      *  @param  pDaughterCluster address of the daughter candidate cluster
      *  @param  pParentCluster address of the parent candidate cluster
      *  @param  parameters the cluster contact parameters
+     *  @param  contactCache cache of the per-cluster bounding boxes
      */
-    void HitDistanceComparison(const pandora::Cluster *const pDaughterCluster, const pandora::Cluster *const pParentCluster, const Parameters &parameters);
+    void HitDistanceComparison(const pandora::Cluster *const pDaughterCluster, const pandora::Cluster *const pParentCluster,
+        const Parameters &parameters, ClusterContactCache &contactCache);
 
     const pandora::Cluster     *m_pDaughterCluster;         ///< Address of the daughter candidate cluster
     const pandora::Cluster     *m_pParentCluster;           ///< Address of the parent candidate cluster

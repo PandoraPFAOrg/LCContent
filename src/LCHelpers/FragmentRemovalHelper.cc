@@ -8,6 +8,7 @@
 
 #include "Pandora/AlgorithmHeaders.h"
 
+#include "LCHelpers/ClusterProximityHelper.h"
 #include "LCHelpers/FragmentRemovalHelper.h"
 
 using namespace pandora;
@@ -393,7 +394,8 @@ CartesianVector FragmentRemovalHelper::GetEMEnergyWeightedPosition(const Cluster
 //------------------------------------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-ClusterContact::ClusterContact(const Pandora &pandora, const Cluster *const pDaughterCluster, const Cluster *const pParentCluster, const Parameters &parameters) :
+ClusterContact::ClusterContact(const Pandora &pandora, const Cluster *const pDaughterCluster, const Cluster *const pParentCluster,
+        const Parameters &parameters, ClusterContactCache &contactCache) :
     m_pDaughterCluster(pDaughterCluster),
     m_pParentCluster(pParentCluster),
     m_nContactLayers(0),
@@ -406,12 +408,13 @@ ClusterContact::ClusterContact(const Pandora &pandora, const Cluster *const pDau
     (void) FragmentRemovalHelper::GetClusterContactDetails(pDaughterCluster, pParentCluster, parameters.m_distanceThreshold,
         m_nContactLayers, m_contactFraction);
 
-    this->HitDistanceComparison(pDaughterCluster, pParentCluster, parameters);
+    this->HitDistanceComparison(pDaughterCluster, pParentCluster, parameters, contactCache);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void ClusterContact::HitDistanceComparison(const Cluster *const pDaughterCluster, const Cluster *const pParentCluster, const Parameters &parameters)
+void ClusterContact::HitDistanceComparison(const Cluster *const pDaughterCluster, const Cluster *const pParentCluster, const Parameters &parameters,
+    ClusterContactCache &contactCache)
 {
     const float closeHitDistance1Squared(parameters.m_closeHitDistance1 * parameters.m_closeHitDistance1);
     const float closeHitDistance2Squared(parameters.m_closeHitDistance2 * parameters.m_closeHitDistance2);
@@ -429,6 +432,16 @@ void ClusterContact::HitDistanceComparison(const Cluster *const pDaughterCluster
     const OrderedCaloHitList &orderedCaloHitListI(pDaughterCluster->GetOrderedCaloHitList());
     const OrderedCaloHitList &orderedCaloHitListJ(pParentCluster->GetOrderedCaloHitList());
 
+    // The parent's hits are already grouped by pseudo layer, and a pseudo layer is a thin shell, so the box
+    // enclosing one bounds them far more tightly than a box around the whole cluster. A layer whose box is
+    // further from a daughter hit than both the running minimum and the wider close-hit distance cannot
+    // lower the minimum or set either flag, so skipping it reaches the same answer its hit loop would have.
+    // That matters most for the long, many-layered clusters whose pairs cost the most. The boxes depend on
+    // the parent alone, and a parent is paired with many daughters, so they come from the cache.
+    const ClusterLayerBoundingBoxVector &layerBoundingBoxesJ(contactCache.GetLayerBoundingBoxes(pParentCluster));
+
+    const float closeHitDistanceSquared(std::max(closeHitDistance1Squared, closeHitDistance2Squared));
+
     // Loop over hits in daughter cluster
     for (OrderedCaloHitList::const_iterator iterI = orderedCaloHitListI.begin(), iterIEnd = orderedCaloHitListI.end(); iterI != iterIEnd; ++iterI)
     {
@@ -436,10 +449,16 @@ void ClusterContact::HitDistanceComparison(const Cluster *const pDaughterCluster
         {
             bool isCloseHit1(false), isCloseHit2(false);
             const CartesianVector &positionVectorI((*hitIterI)->GetPositionVector());
+            unsigned int layerIndexJ(0);
 
             // Compare each hit in daughter cluster with those in parent cluster
             for (OrderedCaloHitList::const_iterator iterJ = orderedCaloHitListJ.begin(), iterJEnd = orderedCaloHitListJ.end(); iterJ != iterJEnd; ++iterJ)
             {
+                const ClusterBoundingBox &layerBoundingBoxJ(layerBoundingBoxesJ.at(layerIndexJ++));
+
+                if (layerBoundingBoxJ.IsSeparatedFromSquared(positionVectorI, std::max(minDistanceSquared, closeHitDistanceSquared)))
+                    continue;
+
                 for (CaloHitList::const_iterator hitIterJ = iterJ->second->begin(), hitIterJEnd = iterJ->second->end(); hitIterJ != hitIterJEnd; ++hitIterJ)
                 {
                     const float distanceSquared(positionVectorI.GetDistanceSquared((*hitIterJ)->GetPositionVector()));

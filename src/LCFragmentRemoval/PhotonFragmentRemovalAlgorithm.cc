@@ -62,12 +62,16 @@ StatusCode PhotonFragmentRemovalAlgorithm::Run()
     ClusterSet affectedClusters;
     ClusterContactMap clusterContactMap;
 
+    // Per-cluster bounding boxes, reused across passes. This algorithm keeps its full rebuild of the affected
+    // daughters, so the cache is here only to stop the hit comparison rebuilding a parent's boxes per pair.
+    ClusterContactCache contactCache;
+
     while ((nPasses++ < m_nMaxPasses) && shouldRecalculate)
     {
         shouldRecalculate = false;
         const Cluster *pBestParentCluster(NULL), *pBestDaughterCluster(NULL);
 
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetClusterContactMap(isFirstPass, affectedClusters, clusterContactMap));
+        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetClusterContactMap(isFirstPass, affectedClusters, contactCache, clusterContactMap));
 
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetClusterMergingCandidates(clusterContactMap, pBestParentCluster,
             pBestDaughterCluster));
@@ -79,6 +83,8 @@ StatusCode PhotonFragmentRemovalAlgorithm::Run()
 
             clusterContactMap.erase(clusterContactMap.find(pBestDaughterCluster));
             shouldRecalculate = true;
+
+            contactCache.RecordMerge(pBestParentCluster, pBestDaughterCluster);
 
             PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::MergeAndDeleteClusters(*this, pBestParentCluster,
                 pBestDaughterCluster));
@@ -94,7 +100,7 @@ StatusCode PhotonFragmentRemovalAlgorithm::Run()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode PhotonFragmentRemovalAlgorithm::GetClusterContactMap(bool &isFirstPass, const ClusterSet &affectedClusters,
+StatusCode PhotonFragmentRemovalAlgorithm::GetClusterContactMap(bool &isFirstPass, const ClusterSet &affectedClusters, ClusterContactCache &contactCache,
     ClusterContactMap &clusterContactMap) const
 {
     const ClusterList *pClusterList = NULL;
@@ -150,7 +156,7 @@ StatusCode PhotonFragmentRemovalAlgorithm::GetClusterContactMap(bool &isFirstPas
                 continue;
 
             // Evaluate cluster contact properties
-            const ClusterContact clusterContact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters);
+            const ClusterContact clusterContact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters, contactCache);
 
             if (this->PassesClusterContactCuts(clusterContact))
             {

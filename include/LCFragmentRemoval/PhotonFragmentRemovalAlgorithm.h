@@ -36,9 +36,11 @@ private:
      * 
      *  @param  isFirstPass whether this is the first call to GetClusterContactMap
      *  @param  affectedClusters list of those clusters affected by previous cluster merging, for which contact details must be updated
+     *  @param  contactCache cache of the per-cluster bounding boxes the hit comparison uses
      *  @param  clusterContactMap to receive the populated cluster contact map
      */
-    pandora::StatusCode GetClusterContactMap(bool &isFirstPass, const pandora::ClusterSet &affectedClusters, ClusterContactMap &clusterContactMap) const;
+    pandora::StatusCode GetClusterContactMap(bool &isFirstPass, const pandora::ClusterSet &affectedClusters,
+        ClusterContactCache &contactCache, ClusterContactMap &clusterContactMap) const;
 
     /**
      *  @brief  Whether candidate daughter cluster can be considered as photon-like
