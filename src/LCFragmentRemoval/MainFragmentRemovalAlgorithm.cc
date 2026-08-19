@@ -209,8 +209,7 @@ StatusCode MainFragmentRemovalAlgorithm::GetChargedClusterContactMap(bool &isFir
             // and nothing else, so all but a handful of this daughter's contacts are still bit-for-bit what
             // they were. Update those few rather than rebuilding the vector - unless the daughter's own hits
             // moved, in which case every one of its contacts has changed.
-            changedClusters.clear();
-            contactCache.GetClustersChangedSince(pDaughterCluster, changedClusters);
+            changedClusters = contactCache.GetClustersChangedSince(pDaughterCluster);
             changedClusterSet.clear();
             changedClusterSet.insert(changedClusters.begin(), changedClusters.end());
             isFullRebuild = (changedClusterSet.end() != changedClusterSet.find(pDaughterCluster));

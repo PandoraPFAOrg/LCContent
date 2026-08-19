@@ -26,19 +26,10 @@ namespace lc_content
  *          each, then throw the answer away because the two clusters are nowhere near one another. A
  *          bounding box answers "nowhere near" in constant time.
  *
- *          Every separation reported here is a lower bound on the corresponding hit-hit distance, and is
- *          one in float arithmetic as well as in exact arithmetic. Per axis, the box separation is
- *          computed by the same correctly-rounded subtraction of two hit coordinates that the hit loop
- *          performs, on operands that bracket the true pair; IEEE subtraction, multiplication and
- *          addition are all monotonic, so the rounded sum of squares cannot exceed the rounded sum of
- *          squares it bounds. That is what lets a box rejection stand in exactly for running the hit loop
- *          and finding nothing.
- *
- *          The one place the argument is not airtight is that the compiler may contract a*a+b into an fma
- *          in one expression and not the other, which can move a result by an ulp. The comparisons below
- *          therefore slacken the bound by a relative margin far larger than an ulp and far smaller than
- *          any physically meaningful distance, so a pair sitting on the threshold is always evaluated
- *          rather than skipped.
+ *          Every separation the box reports is a lower bound on the corresponding hit-hit distance, so
+ *          the answers are one-sided: a box reported as separated really is separated, and its hit loop
+ *          can be skipped, while a box not reported as separated may still be. A caller must read false
+ *          as "not certain" and fall through to the hit loop.
  */
 class ClusterBoundingBox
 {
@@ -121,9 +112,9 @@ private:
      */
     static bool IsCertainlyBeyond(const float separationSquared, const float distanceSquared);
 
-    float           m_min[3];           ///< Lower corner of the box
-    float           m_max[3];           ///< Upper corner of the box
-    bool            m_isInitialized;    ///< Whether the box encloses at least one hit
+    pandora::CartesianVector    m_min;              ///< Lower corner of the box
+    pandora::CartesianVector    m_max;              ///< Upper corner of the box
+    bool                        m_isInitialized;    ///< Whether the box encloses at least one hit
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -134,14 +125,14 @@ private:
  *          Contact vectors are built by walking that list in order, so anything that updates one in place
  *          rather than rebuilding it needs to be able to ask where a cluster sits in it.
  */
-typedef std::unordered_map<const pandora::Cluster *, unsigned int> ClusterToIndexMap;
+using ClusterToIndexMap = std::unordered_map<const pandora::Cluster *, unsigned int>;
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
  *  @brief  One bounding box per occupied pseudo layer of a cluster, in pseudo layer order
  */
-typedef std::vector<ClusterBoundingBox> ClusterLayerBoundingBoxVector;
+using ClusterLayerBoundingBoxVector = std::vector<ClusterBoundingBox>;
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -188,6 +179,9 @@ public:
      *          around the whole cluster does. They depend on the cluster alone, and a cluster is the parent of
      *          many pairs, so they are worth keeping rather than rebuilding per pair.
      *
+     *          The vector is built by walking the cluster's ordered calo hit list, so its entries pair up with
+     *          that list in order. A caller stepping through the two together is what makes the pairing correct.
+     *
      *  @param  pCluster address of the cluster
      *
      *  @return the per pseudo layer bounding boxes
@@ -216,9 +210,10 @@ public:
      *          with the provided cluster have to be recomputed; every other contact it holds is unchanged.
      *
      *  @param  pCluster address of the cluster
-     *  @param  changedClusters to receive the changed clusters
+     *
+     *  @return the changed clusters
      */
-    void GetClustersChangedSince(const pandora::Cluster *const pCluster, pandora::ClusterVector &changedClusters) const;
+    pandora::ClusterVector GetClustersChangedSince(const pandora::Cluster *const pCluster) const;
 
     /**
      *  @brief  Declare a cluster's contacts to reflect every merge recorded so far
@@ -228,15 +223,15 @@ public:
     void MarkUpToDate(const pandora::Cluster *const pCluster);
 
 private:
-    typedef std::unordered_map<const pandora::Cluster *, ClusterBoundingBox> ClusterToBoundingBoxMap;
-    typedef std::unordered_map<const pandora::Cluster *, ClusterLayerBoundingBoxVector> ClusterToLayerBoundingBoxMap;
-    typedef std::unordered_map<const pandora::Cluster *, unsigned int> ClusterToWatermarkMap;
-    typedef std::pair<const pandora::Cluster *, const pandora::Cluster *> ClusterMerge;
+    using ClusterToBoundingBoxMap = std::unordered_map<const pandora::Cluster *, ClusterBoundingBox>;
+    using ClusterToLayerBoundingBoxMap = std::unordered_map<const pandora::Cluster *, ClusterLayerBoundingBoxVector>;
+    using ClusterToWatermarkMap = std::unordered_map<const pandora::Cluster *, unsigned int>;
+    using ClusterMerge = std::pair<const pandora::Cluster *, const pandora::Cluster *>;
 
-    ClusterToBoundingBoxMap     m_boundingBoxes;        ///< The cached whole-cluster bounding boxes
-    ClusterToLayerBoundingBoxMap m_layerBoundingBoxes;  ///< The cached per pseudo layer bounding boxes
-    ClusterToWatermarkMap       m_watermarks;       ///< Number of merges each cluster's cached contacts reflect
-    std::vector<ClusterMerge>   m_merges;           ///< The parent and daughter of every merge, in order
+    ClusterToBoundingBoxMap         m_boundingBoxes;        ///< The cached whole-cluster bounding boxes
+    ClusterToLayerBoundingBoxMap    m_layerBoundingBoxes;   ///< The cached per pseudo layer bounding boxes
+    ClusterToWatermarkMap           m_watermarks;           ///< Number of merges each cluster's cached contacts reflect
+    std::vector<ClusterMerge>       m_merges;               ///< The parent and daughter of every merge, in order
 };
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -244,8 +239,11 @@ private:
 
 inline bool ClusterBoundingBox::IsCertainlyBeyond(const float separationSquared, const float distanceSquared)
 {
-    // See the class comment: the margin is many ulp wide and, at the distances these cuts use, a few
-    // microns of slack.
+    // The margin makes the lower-bound guarantee survive floating point rounding: the box separation and the
+    // hit-hit distance it bounds are formed by different expressions, and a compiler is free to contract
+    // a*a + b into an fma in one and not the other, which can move a result by an ulp. The margin is many ulp
+    // wide and, at the distances these cuts use, a few microns of slack, so a pair sitting on the threshold is
+    // always evaluated rather than skipped.
     const float boundSafetyFactor(1.f - 1e-5f);
     return ((separationSquared * boundSafetyFactor) > distanceSquared);
 }
@@ -274,11 +272,9 @@ inline bool ClusterBoundingBox::IsSeparatedFrom(const ClusterBoundingBox &rhs, c
 
 inline float ClusterBoundingBox::GetSeparationSquared(const pandora::CartesianVector &point) const
 {
-    const float x(point.GetX()), y(point.GetY()), z(point.GetZ());
-
-    const float dx(std::max(0.f, std::max(m_min[0] - x, x - m_max[0])));
-    const float dy(std::max(0.f, std::max(m_min[1] - y, y - m_max[1])));
-    const float dz(std::max(0.f, std::max(m_min[2] - z, z - m_max[2])));
+    const float dx(std::max(0.f, std::max(m_min.GetX() - point.GetX(), point.GetX() - m_max.GetX())));
+    const float dy(std::max(0.f, std::max(m_min.GetY() - point.GetY(), point.GetY() - m_max.GetY())));
+    const float dz(std::max(0.f, std::max(m_min.GetZ() - point.GetZ(), point.GetZ() - m_max.GetZ())));
 
     return ((dx * dx) + (dy * dy) + (dz * dz));
 }
@@ -287,9 +283,9 @@ inline float ClusterBoundingBox::GetSeparationSquared(const pandora::CartesianVe
 
 inline float ClusterBoundingBox::GetSeparationSquared(const ClusterBoundingBox &rhs) const
 {
-    const float dx(std::max(0.f, std::max(m_min[0] - rhs.m_max[0], rhs.m_min[0] - m_max[0])));
-    const float dy(std::max(0.f, std::max(m_min[1] - rhs.m_max[1], rhs.m_min[1] - m_max[1])));
-    const float dz(std::max(0.f, std::max(m_min[2] - rhs.m_max[2], rhs.m_min[2] - m_max[2])));
+    const float dx(std::max(0.f, std::max(m_min.GetX() - rhs.m_max.GetX(), rhs.m_min.GetX() - m_max.GetX())));
+    const float dy(std::max(0.f, std::max(m_min.GetY() - rhs.m_max.GetY(), rhs.m_min.GetY() - m_max.GetY())));
+    const float dz(std::max(0.f, std::max(m_min.GetZ() - rhs.m_max.GetZ(), rhs.m_min.GetZ() - m_max.GetZ())));
 
     return ((dx * dx) + (dy * dy) + (dz * dz));
 }
