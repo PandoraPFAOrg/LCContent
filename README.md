@@ -2,7 +2,7 @@
 [![Build Status](https://travis-ci.org/PandoraPFA/LCContent.svg?branch=master)](https://travis-ci.org/PandoraPFA/LCContent)
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/13056/badge.svg)](https://scan.coverity.com/projects/pandorapfa-lccontent)
 
-Pandora algorithms and tools for Linear Collider event reconstruction
+Pandora algorithms and tools for Lepton Collider event reconstruction
 
 LCContent is distributed under the [GPLv3 License](http://www.gnu.org/licenses/gpl-3.0.en.html)
 
