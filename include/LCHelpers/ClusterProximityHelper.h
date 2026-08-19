@@ -26,10 +26,9 @@ namespace lc_content
  *          each, then throw the answer away because the two clusters are nowhere near one another. A
  *          bounding box answers "nowhere near" in constant time.
  *
- *          Every separation the box reports is a lower bound on the corresponding hit-hit distance, so
- *          the answers are one-sided: a box reported as separated really is separated, and its hit loop
- *          can be skipped, while a box not reported as separated may still be. A caller must read false
- *          as "not certain" and fall through to the hit loop.
+ *          Every separation the box reports is a lower bound on the corresponding hit-hit distance: a 
+ *          box reported as separated really is separated, while a box not reported as separated may 
+ *          still be. A caller must read false as "not certain" and fall through to the hit loop.
  */
 class ClusterBoundingBox
 {
