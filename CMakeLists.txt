@@ -70,6 +70,11 @@ if(PANDORA_MONITORING)
   target_compile_definitions(${PROJECT_NAME} PRIVATE -DMONITORING ${PandoraMonitoring_DEFINITIONS})
 endif()
 
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()
+
 option(LCContent_BUILD_DOCS "Build documentation for ${PROJECT_NAME}" OFF)
 if(LCContent_BUILD_DOCS)
     add_subdirectory(doc)

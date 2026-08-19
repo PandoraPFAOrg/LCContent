@@ -51,7 +51,7 @@ int main()
         return 1;
     }
 
-    std::cout << "LCContentSmokeTest: all linear collider content registered successfully" << std::endl;
+    std::cout << "LCContentSmokeTest: all LC content registered successfully" << std::endl;
 
     return 0;
 }

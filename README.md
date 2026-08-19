@@ -1,5 +1,5 @@
 # LCContent
-[![Build Status](https://travis-ci.org/PandoraPFA/LCContent.svg?branch=master)](https://travis-ci.org/PandoraPFA/LCContent)
+[![Key4hep build](https://github.com/PandoraPFA/LCContent/actions/workflows/key4hep-build.yaml/badge.svg)](https://github.com/PandoraPFA/LCContent/actions/workflows/key4hep-build.yaml)
 [![Coverity Scan Build Status](https://scan.coverity.com/projects/13056/badge.svg)](https://scan.coverity.com/projects/pandorapfa-lccontent)
 
 Pandora algorithms and tools for Lepton Collider event reconstruction
