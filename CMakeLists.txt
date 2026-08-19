@@ -52,7 +52,9 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET headers TYPE HEADERS BASE_DIRS "i
 if(TARGET PandoraPFA::PandoraSDK)
   target_link_libraries(${PROJECT_NAME} PUBLIC PandoraPFA::PandoraSDK)
 else()
-  target_include_directories(${PROJECT_NAME} PUBLIC ${PandoraSDK_INCLUDE_DIRS})
+  # SYSTEM: the headers of the external dependency are not maintained here, so
+  # diagnostics raised inside them must not fail a -Werror build of LCContent
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PandoraSDK_INCLUDE_DIRS})
   target_link_libraries(${PROJECT_NAME} PUBLIC ${PandoraSDK_LIBRARIES})
 endif()
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -64,7 +66,7 @@ if(PANDORA_MONITORING)
   if(TARGET PandoraPFA::PandoraMonitoring)
       target_link_libraries(${PROJECT_NAME} PUBLIC PandoraPFA::PandoraMonitoring)
   else()
-      target_include_directories(${PROJECT_NAME} PUBLIC ${PandoraMonitoring_INCLUDE_DIRS})
+      target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PandoraMonitoring_INCLUDE_DIRS})
       target_link_libraries(${PROJECT_NAME} PUBLIC ${PandoraMonitoring_LIBRARIES})
   endif()
   target_compile_definitions(${PROJECT_NAME} PRIVATE -DMONITORING ${PandoraMonitoring_DEFINITIONS})
