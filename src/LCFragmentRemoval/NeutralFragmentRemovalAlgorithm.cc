@@ -292,14 +292,12 @@ bool NeutralFragmentRemovalAlgorithm::CouldPassClusterContactCuts(const Cluster 
     const Cluster *const pParentCluster, ClusterContactCache &contactCache) const
 {
     // PassesClusterContactCuts opens by discarding any contact whose closest hit-hit separation exceeds
-    // m_contactCutMaxDistance, and every later term only ever adds reasons to keep one. So a pair whose
-    // clusters cannot have two hits that close cannot enter the map, whatever else is true of it.
+    // m_contactCutMaxDistance, and every later term only ever adds reasons to keep one.
     //
     // ClusterContact reports that separation as float max in two situations: when the hit loop genuinely
     // found nothing closer, and when the loop never ran because the initial directions of the two clusters
-    // open by more than m_minCosOpeningAngle. Either way the contact is discarded, so both tests below are
-    // rejections the unfiltered code makes too - they are just made before the hits are touched rather
-    // than after. The cosine is the same call on the same cached directions that ClusterContact would make.
+    // open by more than m_minCosOpeningAngle. Either way the contact is discarded. 
+    // The cosine is the same call on the same cached directions that ClusterContact would make.
     if (pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()) < m_contactParameters.m_minCosOpeningAngle)
         return false;
 
