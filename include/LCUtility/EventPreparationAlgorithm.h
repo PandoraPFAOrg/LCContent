@@ -1,8 +1,8 @@
 /**
  *  @file   LCContent/include/LCUtility/EventPreparationAlgorithm.h
- * 
+ *
  *  @brief  Header file for the track selection algorithm class.
- * 
+ *
  *  $Log: $
  */
 #ifndef LC_EVENT_PREPARATION_ALGORITHM_H
@@ -10,24 +10,22 @@
 
 #include "Pandora/Algorithm.h"
 
-namespace lc_content
-{
+namespace lc_content {
 
 /**
  *  @brief  EventPreparationAlgorithm class
  */
-class EventPreparationAlgorithm : public pandora::Algorithm
-{
+class EventPreparationAlgorithm : public pandora::Algorithm {
 private:
-    pandora::StatusCode Run();
-    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+  pandora::StatusCode Run();
+  pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-    std::string     m_outputTrackListName;          ///< The output track list name
-    std::string     m_outputCaloHitListName;        ///< The output calo hit list name
-    std::string     m_outputMuonCaloHitListName;    ///< The output muon calo hit list name
+  std::string m_outputTrackListName;       ///< The output track list name
+  std::string m_outputCaloHitListName;     ///< The output calo hit list name
+  std::string m_outputMuonCaloHitListName; ///< The output muon calo hit list name
 
-    std::string     m_replacementTrackListName;     ///< The replacement track list name
-    std::string     m_replacementCaloHitListName;   ///< The replacement calo hit list name
+  std::string m_replacementTrackListName;   ///< The replacement track list name
+  std::string m_replacementCaloHitListName; ///< The replacement calo hit list name
 };
 
 } // namespace lc_content
