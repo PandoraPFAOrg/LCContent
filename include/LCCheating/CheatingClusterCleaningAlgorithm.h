@@ -1,8 +1,8 @@
 /**
  *  @file   LCContent/include/LCCheating/CheatingClusterCleaningAlgorithm.h
- * 
+ *
  *  @brief  Header file for the cheating cluster cleaning algorithm class.
- * 
+ *
  *  $Log: $
  */
 #ifndef LC_CHEATING_CLUSTER_CLEANING_ALGORITHM_H
@@ -12,17 +12,15 @@
 
 #include "Pandora/PandoraInternal.h"
 
-namespace lc_content
-{
+namespace lc_content {
 
 /**
  *  @brief CheatingClusterCleaningAlgorithm class
  */
-class CheatingClusterCleaningAlgorithm : public pandora::Algorithm
-{
+class CheatingClusterCleaningAlgorithm : public pandora::Algorithm {
 private:
-    pandora::StatusCode Run();
-    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+  pandora::StatusCode Run();
+  pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 };
 
 } // namespace lc_content

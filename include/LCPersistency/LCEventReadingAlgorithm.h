@@ -12,27 +12,25 @@
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-namespace lc_content
-{
+namespace lc_content {
 
 /**
  *  @brief  LCEventReadingAlgorithm class
  */
-class LCEventReadingAlgorithm : public EventReadingAlgorithm
-{
+class LCEventReadingAlgorithm : public EventReadingAlgorithm {
 public:
-    /**
-     *  @brief  Default constructor
-     */
-    LCEventReadingAlgorithm();
+  /**
+   *  @brief  Default constructor
+   */
+  LCEventReadingAlgorithm();
 
-    /**
-     *  @brief  Destructor
-     */
-    ~LCEventReadingAlgorithm();
+  /**
+   *  @brief  Destructor
+   */
+  ~LCEventReadingAlgorithm();
 
 protected:
-    pandora::StatusCode Initialize();
+  pandora::StatusCode Initialize();
 };
 
 } // namespace lc_content
