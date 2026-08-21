@@ -56,6 +56,12 @@ StatusCode EventPreparationAlgorithm::Run()
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList(*this, caloHitList, m_outputCaloHitListName));
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<CaloHit>(*this, m_replacementCaloHitListName));
 
+    pdebug() << "Initial number of tracks: " << pCurrentTrackList->size() << std::endl;
+    pdebug() << "Tracks for clustering: " << clusteringTrackList.size() << std::endl;
+    pdebug() << "Initial number of calo hits: " << pCaloHitList->size() << std::endl;
+    pdebug() << "- ecal/hcal hits: " << caloHitList.size() << std::endl;
+    pdebug() << "- muon hits: " << muonCaloHitList.size() << std::endl;
+
     return STATUS_CODE_SUCCESS;
 }
 

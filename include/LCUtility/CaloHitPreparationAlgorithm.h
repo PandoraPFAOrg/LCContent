@@ -92,6 +92,10 @@ private:
 
     std::vector<HitKDNode4D>   *m_hitNodes4D;           ///< nodes for the KD tree (used for filling)
     HitKDTree4D                *m_hitsKdTree4D;         ///< the kd-tree itself, 4D in x,y,z,pseudolayer
+
+    // for diagnostics
+    unsigned int m_nIsolatedHits;
+    unsigned int m_nPossibleMipHits;
 };
 
 } // namespace lc_content

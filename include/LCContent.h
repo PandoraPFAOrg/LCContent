@@ -29,8 +29,9 @@ public:
      *  @brief  Register the basic (no configuration required on user side) linear collider plugins with pandora
      * 
      *  @param  pandora the pandora instance with which to register content
+     *  @param  detectorName the name of the detector (only relevant for ALLEGRO)
      */
-    static pandora::StatusCode RegisterBasicPlugins(const pandora::Pandora &pandora);
+    static pandora::StatusCode RegisterBasicPlugins(const pandora::Pandora &pandora, const std::string detectorName="");
 
     /**
      *  @brief  Register the b field plugin (note user side configuration) with pandora

@@ -51,6 +51,7 @@
 #include "LCPlugins/LCEnergyCorrectionPlugins.h"
 #include "LCPlugins/LCParticleIdPlugins.h"
 #include "LCPlugins/LCPseudoLayerPlugin.h"
+#include "LCPlugins/ALLEGROPseudoLayerPlugin.h"
 #include "LCPlugins/LCShowerProfilePlugin.h"
 #include "LCPlugins/LCSoftwareCompensation.h"
 
@@ -211,12 +212,18 @@ pandora::StatusCode LCContent::RegisterAlgorithms(const pandora::Pandora &pandor
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-pandora::StatusCode LCContent::RegisterBasicPlugins(const pandora::Pandora &pandora)
+pandora::StatusCode LCContent::RegisterBasicPlugins(const pandora::Pandora &pandora, const std::string detectorName)
 {
     LC_ENERGY_CORRECTION_LIST(PANDORA_REGISTER_ENERGY_CORRECTION);
     LC_PARTICLE_ID_LIST(PANDORA_REGISTER_PARTICLE_ID);
 
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraApi::SetPseudoLayerPlugin(pandora, new lc_content::LCPseudoLayerPlugin));
+    if (detectorName == "ALLEGRO")
+    {
+        PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraApi::SetPseudoLayerPlugin(pandora, new allegro_content::ALLEGROPseudoLayerPlugin));
+    }
+    else {
+        PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraApi::SetPseudoLayerPlugin(pandora, new lc_content::LCPseudoLayerPlugin));
+    }
     PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraApi::SetShowerProfilePlugin(pandora, new lc_content::LCShowerProfilePlugin));
 
     return pandora::STATUS_CODE_SUCCESS;

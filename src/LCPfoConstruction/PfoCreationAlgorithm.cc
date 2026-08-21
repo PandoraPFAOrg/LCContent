@@ -1,8 +1,8 @@
 /**
  *  @file   LCContent/src/LCPfoConstruction/PfoCreationAlgorithm.cc
- * 
+ *
  *  @brief  Implementation of the pfo creation algorithm class.
- * 
+ *
  *  $Log: $
  */
 
@@ -54,10 +54,13 @@ StatusCode PfoCreationAlgorithm::Run()
 
 StatusCode PfoCreationAlgorithm::CreateTrackBasedPfos() const
 {
+    pdebug() << "Creating track based PFOs" << std::endl;
+
     // Current track list should contain those tracks selected as "good" by the track preparation algorithm
     const TrackList *pTrackList = NULL;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pTrackList));
 
+    pdebug() << "Looping over track list" << std::endl;
     for (TrackList::const_iterator iter = pTrackList->begin(), iterEnd = pTrackList->end(); iter != iterEnd; ++iter)
     {
         const Track *const pTrack = *iter;
@@ -86,12 +89,14 @@ StatusCode PfoCreationAlgorithm::PopulateTrackBasedPfo(const Track *const pTrack
         return STATUS_CODE_SUCCESS;
 
     pfoParameters.m_trackList.push_back(pTrack);
+    pdebug() << "Added track with momentum at DCA: " << pTrack->GetMomentumAtDca() << std::endl;
 
     // Add any cluster associated with this track to the pfo
     try
     {
         const Cluster *const pAssociatedCluster(pTrack->GetAssociatedCluster());
         pfoParameters.m_clusterList.push_back(pAssociatedCluster);
+        pdebug() <<  "Added associated cluster " << pTrack->GetAssociatedCluster() << std::endl;
     }
     catch (StatusCodeException &)
     {
@@ -100,6 +105,7 @@ StatusCode PfoCreationAlgorithm::PopulateTrackBasedPfo(const Track *const pTrack
     // Consider any sibling tracks
     if (readSiblingInfo)
     {
+        pdebug() << "Adding sibling tracks" << std::endl;
         const TrackList &siblingTrackList(pTrack->GetSiblingList());
 
         for (TrackList::const_iterator iter = siblingTrackList.begin(), iterEnd = siblingTrackList.end(); iter != iterEnd; ++iter)
@@ -109,8 +115,8 @@ StatusCode PfoCreationAlgorithm::PopulateTrackBasedPfo(const Track *const pTrack
     }
 
     // Consider any daughter tracks
+    pdebug() << "Adding daughter tracks" << std::endl;
     const TrackList &daughterTrackList(pTrack->GetDaughterList());
-
     for (TrackList::const_iterator iter = daughterTrackList.begin(), iterEnd = daughterTrackList.end(); iter != iterEnd; ++iter)
     {
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->PopulateTrackBasedPfo(*iter, pfoParameters));
@@ -147,6 +153,8 @@ StatusCode PfoCreationAlgorithm::SetTrackBasedPfoParameters(const Track *const p
 
 StatusCode PfoCreationAlgorithm::SetSiblingTrackBasedPfoParameters(const Track *const pTrack, PfoParameters &pfoParameters) const
 {
+    pdebug() << "Setting PFO parameters based on sibling tracks" << std::endl;
+
     int charge(0);
     float energy(0.f);
     CartesianVector momentum(0.f, 0.f, 0.f);
@@ -184,6 +192,8 @@ StatusCode PfoCreationAlgorithm::SetSiblingTrackBasedPfoParameters(const Track *
 
 StatusCode PfoCreationAlgorithm::SetDaughterTrackBasedPfoParameters(const Track *const pTrack, PfoParameters &pfoParameters) const
 {
+    pdebug() << "Setting PFO parameters based on daughter tracks" << std::endl;
+
     int daughterCharge(0);
     float energy(0.f);
     CartesianVector momentum(0.f, 0.f, 0.f);
@@ -216,6 +226,7 @@ StatusCode PfoCreationAlgorithm::SetDaughterTrackBasedPfoParameters(const Track 
 
 StatusCode PfoCreationAlgorithm::SetSimpleTrackBasedPfoParameters(const Track *const pTrack, PfoParameters &pfoParameters) const
 {
+    pdebug() << "Setting PFO parameters based on single track" << std::endl;
     pfoParameters.m_energy = pTrack->GetEnergyAtDca();
     pfoParameters.m_momentum = pTrack->GetMomentumAtDca();
     pfoParameters.m_mass = pTrack->GetMass();
@@ -229,6 +240,8 @@ StatusCode PfoCreationAlgorithm::SetSimpleTrackBasedPfoParameters(const Track *c
 
 StatusCode PfoCreationAlgorithm::CreateNeutralPfos() const
 {
+    pdebug() << "Creating neutral PFOs from full list of clusters" << std::endl;
+
     const ClusterList *pClusterList = NULL;
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pClusterList));
 
@@ -237,29 +250,43 @@ StatusCode PfoCreationAlgorithm::CreateNeutralPfos() const
     {
         const Cluster *const pCluster = *iter;
 
-        if (!pCluster->GetAssociatedTrackList().empty())
+        if (!pCluster->GetAssociatedTrackList().empty()) {
+            pdebug() << "Skipping cluster with associated tracks" << std::endl;
             continue;
+        }
 
-        if (pCluster->GetNCaloHits() < m_minHitsInCluster)
+        if (pCluster->GetNCaloHits() < m_minHitsInCluster) {
+            pdebug() << "Skipping cluster with not enough hits: " << pCluster->GetNCaloHits() << std::endl;
             continue;
+        }
 
         const bool isPhoton(pCluster->PassPhotonId(this->GetPandora()));
         float clusterEnergy(isPhoton ? pCluster->GetCorrectedElectromagneticEnergy(this->GetPandora()) : pCluster->GetCorrectedHadronicEnergy(this->GetPandora()));
+        pdebug() << "Cluster is " << (isPhoton ? "photon" : "neutral hadron") << std::endl;
+        pdebug() << "Corrected cluster energy: " << clusterEnergy << std::endl;
 
         // Veto non-photon clusters below hadronic energy threshold and those occupying a single layer
         if (!isPhoton)
         {
-            if (clusterEnergy < m_minClusterHadronicEnergy)
+            if (clusterEnergy < m_minClusterHadronicEnergy) {
+                pdebug() << "Skipping cluster flagged as hadron due to energy below threshold: " << m_minClusterHadronicEnergy << std::endl;
                 continue;
+            }
 
-            if (!m_allowSingleLayerClusters && (pCluster->GetInnerPseudoLayer() == pCluster->GetOuterPseudoLayer()))
+            if (!m_allowSingleLayerClusters && (pCluster->GetInnerPseudoLayer() == pCluster->GetOuterPseudoLayer())) {
+                pdebug() << "Skipping cluster flagged as hadron due since inner and outer layer are the same" << std::endl;
                 continue;
+            }
         }
         else
         {
-            if (clusterEnergy < m_minClusterElectromagneticEnergy)
+            if (clusterEnergy < m_minClusterElectromagneticEnergy) {
+                pdebug() << "Skipping cluster flagged as photon due to energy below threshold: " << m_minClusterElectromagneticEnergy << std::endl;
                 continue;
+            }
         }
+
+        pdebug() << "Good cluster found, setting parameters" << std::endl;
 
         // Specify the pfo parameters
         PandoraContentApi::ParticleFlowObject::Parameters pfoParameters;
