@@ -127,9 +127,6 @@ protected:
   float m_distanceToClosestHit;  ///< Distance between closest hits in parent and daughter clusters, units mm
 };
 
-typedef std::vector<ClusterContact> ClusterContactVector;
-typedef std::map<const pandora::Cluster*, ClusterContactVector> ClusterContactMap;
-
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
