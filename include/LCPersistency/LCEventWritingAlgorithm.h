@@ -12,27 +12,25 @@
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-namespace lc_content
-{
+namespace lc_content {
 
 /**
  *  @brief  LCEventWritingAlgorithm class
  */
-class LCEventWritingAlgorithm : public EventWritingAlgorithm
-{
+class LCEventWritingAlgorithm : public EventWritingAlgorithm {
 public:
-    /**
-     *  @brief  Default constructor
-     */
-    LCEventWritingAlgorithm();
+  /**
+   *  @brief  Default constructor
+   */
+  LCEventWritingAlgorithm();
 
-    /**
-     *  @brief  Destructor
-     */
-    ~LCEventWritingAlgorithm();
+  /**
+   *  @brief  Destructor
+   */
+  ~LCEventWritingAlgorithm();
 
 protected:
-    pandora::StatusCode Initialize();
+  pandora::StatusCode Initialize();
 };
 
 } // namespace lc_content
