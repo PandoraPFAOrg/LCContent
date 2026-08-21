@@ -47,6 +47,23 @@ public:
                  ClusterContactCache& contactCache);
 
   /**
+   *  @brief  Whether the initial directions of two clusters are close enough to warrant comparing their hits
+   *
+   *          A pair that fails this gets no hit comparison at all, so the contact reports its closest hit
+   *          separation as float max. A caller that would rather not build the contact in the first place
+   *          can ask here instead, and is guaranteed the same answer because this is the test the
+   *          constructor itself applies.
+   *
+   *  @param  pDaughterCluster address of the daughter candidate cluster
+   *  @param  pParentCluster address of the parent candidate cluster
+   *  @param  parameters the cluster contact parameters
+   *
+   *  @return boolean
+   */
+  static bool PassesDirectionPreselection(const pandora::Cluster* const pDaughterCluster,
+                                          const pandora::Cluster* const pParentCluster, const Parameters& parameters);
+
+  /**
    *  @brief  Get the address of the daughter candidate cluster
    *
    *  @return The address of the daughter candidate cluster

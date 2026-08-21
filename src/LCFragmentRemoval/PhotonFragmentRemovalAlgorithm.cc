@@ -95,9 +95,6 @@ bool PhotonFragmentRemovalAlgorithm::IsPhotonLike(const Cluster* const pDaughter
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 bool PhotonFragmentRemovalAlgorithm::PassesClusterContactCuts(const ClusterContact& clusterContact) const {
-  if (clusterContact.GetDistanceToClosestHit() > m_contactCutMaxDistance)
-    return false;
-
   if ((clusterContact.GetNContactLayers() > m_contactCutNLayers) ||
       (clusterContact.GetConeFraction1() > m_contactCutConeFraction1) ||
       (clusterContact.GetCloseHitFraction1() > m_contactCutCloseHitFraction1) ||

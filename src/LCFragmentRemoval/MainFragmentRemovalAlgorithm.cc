@@ -95,9 +95,6 @@ bool MainFragmentRemovalAlgorithm::IsCandidateParent(const Cluster* const /*pDau
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 bool MainFragmentRemovalAlgorithm::PassesClusterContactCuts(const ChargedClusterContact& chargedClusterContact) const {
-  if (chargedClusterContact.GetDistanceToClosestHit() > m_contactCutMaxDistance)
-    return false;
-
   if ((chargedClusterContact.GetNContactLayers() > m_contactCutNLayers) ||
       (chargedClusterContact.GetConeFraction1() > m_contactCutConeFraction1) ||
       (chargedClusterContact.GetCloseHitFraction1() > m_contactCutCloseHitFraction1) ||

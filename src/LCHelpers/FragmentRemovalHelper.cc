@@ -388,16 +388,24 @@ ClusterContact::ClusterContact(const Pandora& pandora, const Cluster* const pDau
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+bool ClusterContact::PassesDirectionPreselection(const Cluster* const pDaughterCluster,
+                                                 const Cluster* const pParentCluster, const Parameters& parameters) {
+  const float cosOpeningAngle(
+      pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()));
+
+  // Written as a negated rejection, and not as >=, so that the two callers keep exactly the behaviour the
+  // single inline test they replace had.
+  return !(cosOpeningAngle < parameters.m_minCosOpeningAngle);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
 void ClusterContact::HitDistanceComparison(const Cluster* const pDaughterCluster, const Cluster* const pParentCluster,
                                            const Parameters& parameters, ClusterContactCache& contactCache) {
   const float closeHitDistance1Squared(parameters.m_closeHitDistance1 * parameters.m_closeHitDistance1);
   const float closeHitDistance2Squared(parameters.m_closeHitDistance2 * parameters.m_closeHitDistance2);
 
   // Apply simple preselection using cosine of opening angle between the clusters
-  const float cosOpeningAngle(
-      pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()));
-
-  if (cosOpeningAngle < parameters.m_minCosOpeningAngle)
+  if (!ClusterContact::PassesDirectionPreselection(pDaughterCluster, pParentCluster, parameters))
     return;
 
   // Calculate all hit distance properties in a single loop, for efficiency

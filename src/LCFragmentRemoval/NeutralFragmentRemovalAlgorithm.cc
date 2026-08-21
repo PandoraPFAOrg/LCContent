@@ -79,9 +79,6 @@ bool NeutralFragmentRemovalAlgorithm::IsPhotonLike(const Cluster* const pDaughte
 
 bool NeutralFragmentRemovalAlgorithm::PassesClusterContactCuts(
     const NeutralClusterContact& neutralClusterContact) const {
-  if (neutralClusterContact.GetDistanceToClosestHit() > m_contactCutMaxDistance)
-    return false;
-
   if ((neutralClusterContact.GetNContactLayers() > m_contactCutNLayers) ||
       (neutralClusterContact.GetConeFraction1() > m_contactCutConeFraction1) ||
       (neutralClusterContact.GetCloseHitFraction1() > m_contactCutCloseHitFraction1) ||

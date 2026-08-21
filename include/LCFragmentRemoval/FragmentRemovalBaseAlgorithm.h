@@ -99,6 +99,11 @@ protected:
    *  @brief  Whether candidate parent and daughter clusters are sufficiently in contact to warrant further
    * investigation
    *
+   *          Only reached for a contact whose closest hit-hit separation is already within
+   *          m_contactCutMaxDistance: PassesContactCuts applies that cut before dispatching here, so an
+   *          implementation neither has to repeat it nor is able to relax it. See PassesContactCuts for
+   *          why it is not an implementation's to make.
+   *
    *  @param  contact the cluster contact
    *
    *  @return boolean
@@ -128,17 +133,33 @@ protected:
   virtual pandora::StatusCode PostMergeAction(const pandora::Cluster* const pBestParentCluster);
 
   /**
-   *  @brief  Whether a cluster contact between the two clusters could possibly pass PassesClusterContactCuts
+   *  @brief  Whether a contact is worth storing
+   *
+   *          The max distance cut lives here, and not in the PassesClusterContactCuts implementations,
+   *          because CouldPassClusterContactCuts skips whole pairs on the strength of it. Were a
+   *          subclass free to drop or relax it, that subclass would never see the pairs it had just
+   *          decided to keep, and nothing would say so. Holding the cut in the one place every contact
+   *          passes through is what makes the skip provably safe rather than safe by convention.
+   *
+   *  @param  contact the cluster contact
+   *
+   *  @return boolean
+   */
+  bool PassesContactCuts(const CONTACT& contact) const;
+
+  /**
+   *  @brief  Whether a cluster contact between the two clusters could possibly pass PassesContactCuts
    *
    *          Decided from cached cluster properties alone, so that pairs which cannot contribute never
    *          enter the hit loops inside the contact constructor. A false return is a guarantee, not a
-   *          heuristic, and rests on two things:
-   *             - every PassesClusterContactCuts implementation opens by discarding a contact whose
-   *               closest hit-hit separation exceeds m_contactCutMaxDistance, and every later term
-   *               only ever adds reasons to keep one.
-   *             - ClusterContact reports that separation as float max when the initial directions of
-   *               the two clusters open by more than m_minCosOpeningAngle, because it then skips the
-   *               hit loop altogether.
+   *          heuristic, and rests on two things, each of which is now a property of code rather than a
+   *          request to whoever writes the next subclass:
+   *             - PassesContactCuts discards a contact whose closest hit-hit separation exceeds
+   *               m_contactCutMaxDistance before any subclass term is consulted, and no subclass term
+   *               can put such a contact back.
+   *             - a contact whose clusters fail ClusterContact::PassesDirectionPreselection reports
+   *               that separation as float max, because the constructor then skips the hit loop
+   *               altogether. This asks that same function, so the two cannot answer differently.
    *
    *  @param  pDaughterCluster address of the daughter candidate cluster
    *  @param  daughterBoundingBox bounding box of the daughter candidate cluster
@@ -233,13 +254,23 @@ FragmentRemovalBaseAlgorithm<CONTACT>::PostMergeAction(const pandora::Cluster* c
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 template <typename CONTACT>
+inline bool FragmentRemovalBaseAlgorithm<CONTACT>::PassesContactCuts(const CONTACT& contact) const {
+  if (contact.GetDistanceToClosestHit() > m_contactCutMaxDistance)
+    return false;
+
+  return this->PassesClusterContactCuts(contact);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+template <typename CONTACT>
 inline bool FragmentRemovalBaseAlgorithm<CONTACT>::CouldPassClusterContactCuts(
     const pandora::Cluster* const pDaughterCluster, const ClusterBoundingBox& daughterBoundingBox,
     const pandora::Cluster* const pParentCluster, ClusterContactCache& contactCache) const {
-  // See the header: both tests are rejections PassesClusterContactCuts would make too, taken before the
-  // hits are touched rather than after.
-  if (pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()) <
-      m_contactParameters.m_minCosOpeningAngle)
+  // See the header: both tests are rejections PassesContactCuts would make too, taken before the hits are
+  // touched rather than after. The first is asked of the function the contact constructor itself asks, and
+  // the second of the same m_contactCutMaxDistance the cut above uses.
+  if (!ClusterContact::PassesDirectionPreselection(pDaughterCluster, pParentCluster, m_contactParameters))
     return false;
 
   return !daughterBoundingBox.IsSeparatedFrom(contactCache.GetBoundingBox(pParentCluster), m_contactCutMaxDistance);
@@ -382,7 +413,7 @@ pandora::StatusCode FragmentRemovalBaseAlgorithm<CONTACT>::GetClusterContactMap(
     for (const pandora::Cluster* const pParentCluster : candidateParents) {
       const CONTACT contact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters, contactCache);
 
-      if (this->PassesClusterContactCuts(contact)) {
+      if (this->PassesContactCuts(contact)) {
         contactMap[pDaughterCluster].push_back(contact);
       }
     }
@@ -441,7 +472,7 @@ void FragmentRemovalBaseAlgorithm<CONTACT>::UpdateClusterContacts(const pandora:
 
     const CONTACT contact(this->GetPandora(), pDaughterCluster, pParentCluster, m_contactParameters, contactCache);
 
-    if (this->PassesClusterContactCuts(contact))
+    if (this->PassesContactCuts(contact))
       updatedContactVector.push_back(contact);
   }
 
