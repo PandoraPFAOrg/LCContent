@@ -12,6 +12,7 @@
 
 #include "Pandora/PandoraInternal.h"
 
+#include <algorithm>
 #include <unordered_map>
 #include <utility>
 #include <vector>
