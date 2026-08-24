@@ -267,9 +267,7 @@ template <typename CONTACT>
 inline bool FragmentRemovalBaseAlgorithm<CONTACT>::CouldPassClusterContactCuts(
     const pandora::Cluster* const pDaughterCluster, const ClusterBoundingBox& daughterBoundingBox,
     const pandora::Cluster* const pParentCluster, ClusterContactCache& contactCache) const {
-  // See the header: both tests are rejections PassesContactCuts would make too, taken before the hits are
-  // touched rather than after. The first is asked of the function the contact constructor itself asks, and
-  // the second of the same m_contactCutMaxDistance the cut above uses.
+  // Early discrimination based on contact cuts on bounding boxes.
   if (!ClusterContact::PassesDirectionPreselection(pDaughterCluster, pParentCluster, m_contactParameters))
     return false;
 
