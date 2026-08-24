@@ -6,10 +6,10 @@
 
 #include "LCHelpers/VectorHelper.h"
 
-#include <cmath>          // std::cos
-#include <algorithm>      // std::min / std::max
-#include <limits>         // std::numeric_limits
-#include <unordered_map>  // regional cache
+#include <algorithm>     // std::min / std::max
+#include <cmath>         // std::cos
+#include <limits>        // std::numeric_limits
+#include <unordered_map> // regional cache
 
 namespace lc_content {
 
@@ -22,15 +22,13 @@ const pandora::Track* IdeaPfoCreationAlgorithm::FindBestAssociatedTrack(const pa
     return nullptr;
 
   auto sortByTrackClusterDistance = [&aClus](const pandora::Track* a, const pandora::Track* b) {
-    return SortingHelper::SortTracksByDistance(a,b,aClus);
+    return SortingHelper::SortTracksByDistance(a, b, aClus);
   };
 
   std::vector<const pandora::Track*> tracksVector;
-  tracksVector.insert(tracksVector.end(),
-                      associatedTrackList.begin(),
-                      associatedTrackList.end());
+  tracksVector.insert(tracksVector.end(), associatedTrackList.begin(), associatedTrackList.end());
 
-  std::sort(tracksVector.begin(),tracksVector.end(),sortByTrackClusterDistance);
+  std::sort(tracksVector.begin(), tracksVector.end(), sortByTrackClusterDistance);
 
   return tracksVector.front();
 } // FindBestAssociatedTrack
@@ -47,8 +45,8 @@ float IdeaPfoCreationAlgorithm::EstimateScintEnergy(const pandora::Cluster* aClu
     for (const auto* hit : hitList) {
       if (hit->GetHitType() != pandora::DRC_SCINT)
         continue;
-      const float em = hit->GetElectromagneticEnergy();  // > 0 for ECAL
-      eS += (em > 0.f) ? em : hit->GetHadronicEnergy();   // else HCAL scint (hadronic scale)
+      const float em = hit->GetElectromagneticEnergy(); // > 0 for ECAL
+      eS += (em > 0.f) ? em : hit->GetHadronicEnergy(); // else HCAL scint (hadronic scale)
     }
   }
 
@@ -87,7 +85,8 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::Run() {
   const pandora::PfoList* pPfoList = nullptr;
   std::string pfoListName;
 
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::CreateTemporaryListAndSetCurrent(*this, pPfoList, pfoListName));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::CreateTemporaryListAndSetCurrent(*this, pPfoList, pfoListName));
 
   // for now rely on the "Calo-driven" way
   pandora::ClusterList chargedClusters, neutralClusters;
@@ -95,7 +94,7 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::Run() {
   const pandora::ClusterList* clusterList = nullptr;
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, clusterList));
 
-  for (auto iter = clusterList->begin(); iter != clusterList->end(); ++ iter) {
+  for (auto iter = clusterList->begin(); iter != clusterList->end(); ++iter) {
     const pandora::Cluster* const aClus = *iter;
     const auto& associatedTrackList = aClus->GetAssociatedTrackList();
 
@@ -126,8 +125,11 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::Run() {
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, this->CreatePfoFromTrack(trackList));
 
   if (!pPfoList->empty()) {
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList<pandora::ParticleFlowObject>(*this, m_outputPfoListName));
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<pandora::ParticleFlowObject>(*this, m_outputPfoListName));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                             PandoraContentApi::SaveList<pandora::ParticleFlowObject>(*this, m_outputPfoListName));
+    PANDORA_RETURN_RESULT_IF(
+        pandora::STATUS_CODE_SUCCESS, !=,
+        PandoraContentApi::ReplaceCurrentList<pandora::ParticleFlowObject>(*this, m_outputPfoListName));
   }
 
   return pandora::STATUS_CODE_SUCCESS;
@@ -138,11 +140,12 @@ float IdeaPfoCreationAlgorithm::CaloSigma(float p, bool isEm) const {
     return std::numeric_limits<float>::max();
 
   const float stoch = isEm ? m_stochasticEm : m_stochasticHad;
-  const float cst   = isEm ? m_constantEm   : m_constantHad;
+  const float cst = isEm ? m_constantEm : m_constantHad;
   return std::max(m_sigmaFloor, stoch / std::sqrt(p) + cst);
 }
 
-pandora::StatusCode IdeaPfoCreationAlgorithm::CreateElectronCandidates(const pandora::ClusterList& /*clusterList*/) const {
+pandora::StatusCode
+IdeaPfoCreationAlgorithm::CreateElectronCandidates(const pandora::ClusterList& /*clusterList*/) const {
   // No electron ID yet -> all track-associated clusters are handled by the charged-hadron branch
   // (electrons inside jets are rare).  Disabled (not removed): original body commented out below.
   return pandora::STATUS_CODE_SUCCESS;
@@ -195,20 +198,22 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateElectronCandidates(const pan
     pfoParameters.m_momentum = momentum;
     pfoParameters.m_mass = pandora::PdgTable::GetParticleMass(pandora::E_MINUS);
     pfoParameters.m_charge = bestTrack->GetCharge();
-    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ? pandora::PdgTable::GetParticlePdgCode(pandora::E_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::E_MINUS);
+    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ?
+  pandora::PdgTable::GetParticlePdgCode(pandora::E_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::E_MINUS);
 
     // TODO add vertex
 
     // Create the pfo
     const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
-  } // cluster loop
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this,
+  pfoParameters, aPFO)); } // cluster loop
 
   return pandora::STATUS_CODE_SUCCESS;
   */
 } // CreateElectronCandidates
 
-pandora::StatusCode IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(const pandora::ClusterList& clusterList) const {
+pandora::StatusCode
+IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(const pandora::ClusterList& clusterList) const {
   // ---- regional-excess significance gate for the charged-hadron energy -------------------------------
   //   Single-track cluster: over a 3D opening-angle cone (m_coneOpeningAngle), sum E_DR of ALL clusters
   //   (charged + neutral) and p of all associated tracks.  Form the regional neutral excess and its
@@ -228,7 +233,11 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(cons
   const pandora::ClusterList* fullClusterList = nullptr;
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, fullClusterList));
 
-  struct RegInfo { pandora::CartesianVector dir; float edr; float sumP; };
+  struct RegInfo {
+    pandora::CartesianVector dir;
+    float edr;
+    float sumP;
+  };
   std::unordered_map<const pandora::Cluster*, RegInfo> cache;
   cache.reserve(fullClusterList->size());
   for (const auto* c : *fullClusterList) {
@@ -236,18 +245,18 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(cons
     PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, this->GetDualReadoutEnergy(c, edr));
     float sumP = 0.f;
     for (const auto* trk : c->GetAssociatedTrackList())
-      sumP += trk->GetMomentumAtDca().GetMagnitude();       // sum ALL associated tracks (not best)
+      sumP += trk->GetMomentumAtDca().GetMagnitude(); // sum ALL associated tracks (not best)
     cache.emplace(c, RegInfo{c->GetCentroid(c->GetInnerPseudoLayer()).GetUnitVector(), edr, sumP});
   }
 
   const float cosCone = std::cos(m_coneOpeningAngle);
 
   // loop over the (track-associated) charged clusters and build the PFOs
-  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++ iter) {
+  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++iter) {
     const pandora::Cluster* const aClus = *iter;
 
     const auto& associatedTrackList = aClus->GetAssociatedTrackList();
-    const bool  hasMutlipleTracks = associatedTrackList.size() > 1;
+    const bool hasMutlipleTracks = associatedTrackList.size() > 1;
 
     // create PFO
     PandoraContentApi::ParticleFlowObject::Parameters pfoParameters;
@@ -261,45 +270,49 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(cons
     const auto* bestTrack = FindBestAssociatedTrack(aClus);
 
     const RegInfo& self = cache.at(aClus);
-    const float clusterEnergy = self.edr;                   // this cluster's E_DR (from the cache)
-    const float trackP        = bestTrack->GetMomentumAtDca().GetMagnitude();
+    const float clusterEnergy = self.edr; // this cluster's E_DR (from the cache)
+    const float trackP = bestTrack->GetMomentumAtDca().GetMagnitude();
 
     // regional E/p over the opening-angle cone (self included: cos = 1 > cosCone)
     float sumEdr = 0.f, sumP = 0.f;
     for (const auto& kv : cache) {
       if (self.dir.GetCosOpeningAngle(kv.second.dir) > cosCone) {
         sumEdr += kv.second.edr;
-        sumP   += kv.second.sumP;
+        sumP += kv.second.sumP;
       }
     }
-    const float sigmaReg  = CaloSigma(sumEdr, /*isEm=*/false);     // fractional hadronic sigma at the regional E_DR
-    const float regExcess = sumEdr - sumP;                         // regional neutral energy (calo above tracks)
-    const bool  gateFires = regExcess > m_significanceK * sigmaReg * sumEdr;   // S = regExcess/(sigma_c*sumEdr) > k
-    const float clusterExcess = clusterEnergy - trackP;           // this cluster's calo-minus-track energy
+    const float sigmaReg = CaloSigma(sumEdr, /*isEm=*/false); // fractional hadronic sigma at the regional E_DR
+    const float regExcess = sumEdr - sumP;                    // regional neutral energy (calo above tracks)
+    const bool gateFires = regExcess > m_significanceK * sigmaReg * sumEdr; // S = regExcess/(sigma_c*sumEdr) > k
+    const float clusterExcess = clusterEnergy - trackP;                     // this cluster's calo-minus-track energy
 
-    float energy       = trackP;                                  // charged PFO keeps the exact track p (never inflated)
-    auto  momentum     = bestTrack->GetMomentumAtDca();           // track (IP) momentum, magnitude p
+    float energy = trackP;                         // charged PFO keeps the exact track p (never inflated)
+    auto momentum = bestTrack->GetMomentumAtDca(); // track (IP) momentum, magnitude p
     float newNeutralEn = 0.f;
 
     if (hasMutlipleTracks) {
-      energy   = clusterEnergy;                                   // multi-track -> whole E_DR at centroid
+      energy = clusterEnergy; // multi-track -> whole E_DR at centroid
       momentum = self.dir * energy;
     } else if (gateFires && clusterExcess > 0.f) {
-      newNeutralEn = clusterExcess;                               // gate fires: emit the FULL excess as a real neutral
+      newNeutralEn = clusterExcess; // gate fires: emit the FULL excess as a real neutral
     }
     // else: pure charged -> energy = trackP, no neutral
 
     pfoParameters.m_energy = energy;
     pfoParameters.m_momentum = momentum;
-    pfoParameters.m_mass = pandora::PdgTable::GetParticleMass(pandora::PI_PLUS); // TODO pion mass for now (revisit after K-pi separation)
+    pfoParameters.m_mass =
+        pandora::PdgTable::GetParticleMass(pandora::PI_PLUS); // TODO pion mass for now (revisit after K-pi separation)
     pfoParameters.m_charge = bestTrack->GetCharge();
-    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ? pandora::PdgTable::GetParticlePdgCode(pandora::PI_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::PI_MINUS);
+    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0)
+                                     ? pandora::PdgTable::GetParticlePdgCode(pandora::PI_PLUS)
+                                     : pandora::PdgTable::GetParticlePdgCode(pandora::PI_MINUS);
 
     // TODO add vertex
 
     // Create the charged pfo
     const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                             PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
 
     // Emitted co-axial neutral (gate fired) -> separate neutral-hadron PFO along the cluster centroid.
     // It carries NO cluster: Pandora enforces exclusive cluster->PFO ownership (the charged PFO already
@@ -308,14 +321,14 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(cons
     // 4-momentum (energy = excess, centroid direction).
     if (newNeutralEn > 0.f) {
       PandoraContentApi::ParticleFlowObject::Parameters nhParams;
-      nhParams.m_energy     = newNeutralEn;
-      nhParams.m_momentum   = self.dir * newNeutralEn;
-      nhParams.m_mass       = pandora::PdgTable::GetParticleMass(pandora::K_LONG);
-      nhParams.m_charge     = 0.f;
+      nhParams.m_energy = newNeutralEn;
+      nhParams.m_momentum = self.dir * newNeutralEn;
+      nhParams.m_mass = pandora::PdgTable::GetParticleMass(pandora::K_LONG);
+      nhParams.m_charge = 0.f;
       nhParams.m_particleId = pandora::PdgTable::GetParticlePdgCode(pandora::K_LONG);
       const pandora::ParticleFlowObject* nhPFO = nullptr;
       PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-          PandoraContentApi::ParticleFlowObject::Create(*this, nhParams, nhPFO));
+                               PandoraContentApi::ParticleFlowObject::Create(*this, nhParams, nhPFO));
     }
   }
 
@@ -324,7 +337,7 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(cons
 
 pandora::StatusCode IdeaPfoCreationAlgorithm::CreatePhotonCandidates(const pandora::ClusterList& clusterList) const {
   // loop over clusters
-  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++ iter) {
+  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++iter) {
     const pandora::Cluster* const aClus = *iter;
 
     // use photon flag set upstream
@@ -351,15 +364,17 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreatePhotonCandidates(const pando
 
     // Create the pfo
     const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                             PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
   }
 
   return pandora::STATUS_CODE_SUCCESS;
 } // CreatePhotonCandidates
 
-pandora::StatusCode IdeaPfoCreationAlgorithm::CreateNeutralHadronCandidates(const pandora::ClusterList& clusterList) const {
+pandora::StatusCode
+IdeaPfoCreationAlgorithm::CreateNeutralHadronCandidates(const pandora::ClusterList& clusterList) const {
   // loop over clusters
-  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++ iter) {
+  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++iter) {
     const pandora::Cluster* const aClus = *iter;
 
     if (aClus->GetParticleId() == pandora::PHOTON)
@@ -393,7 +408,8 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreateNeutralHadronCandidates(cons
 
     // Create the pfo
     const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                             PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
   }
 
   return pandora::STATUS_CODE_SUCCESS;
@@ -438,11 +454,13 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreatePfoFromTrack(const pandora::
     pfoParameters.m_momentum = momentum;
     pfoParameters.m_mass = pandora::PdgTable::GetParticleMass(pandora::MU_MINUS); // muon for now
     pfoParameters.m_charge = track->GetCharge();
-    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ? pandora::PdgTable::GetParticlePdgCode(pandora::MU_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::MU_MINUS);
+    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ?
+  pandora::PdgTable::GetParticlePdgCode(pandora::MU_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::MU_MINUS);
 
     // Create the pfo
     const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, aPFO));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this,
+  pfoParameters, aPFO));
   }
 
   return pandora::STATUS_CODE_SUCCESS;
@@ -450,37 +468,37 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreatePfoFromTrack(const pandora::
 } // CreatePfoFromTrack
 
 pandora::StatusCode IdeaPfoCreationAlgorithm::ReadSettings(const pandora::TiXmlHandle xmlHandle) {
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "OutputPfoListName", m_outputPfoListName));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "OutputPfoListName", m_outputPfoListName));
 
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "NSigma", m_nSigma));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "NSigma", m_nSigma));
 
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "StochasticTermHad", m_stochasticHad));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "StochasticTermHad", m_stochasticHad));
 
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "ConstantTermHad", m_constantHad));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "ConstantTermHad", m_constantHad));
 
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "StochasticTermEm", m_stochasticEm));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "StochasticTermEm", m_stochasticEm));
 
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "ConstantTermEm", m_constantEm));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "ConstantTermEm", m_constantEm));
 
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "PtCut", m_ptCut));
+  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "PtCut", m_ptCut));
 
   // regional-excess significance gate on the charged-hadron energy
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "ConeOpeningAngle", m_coneOpeningAngle));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "ConeOpeningAngle", m_coneOpeningAngle));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "SignificanceK", m_significanceK));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "SignificanceK", m_significanceK));
 
   // flat neutral-hadron energy calibration (independent of the regression; default 1.10)
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "NeutralHadEnergyScale", m_neutralHadScale));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "NeutralHadEnergyScale", m_neutralHadScale));
 
   return pandora::STATUS_CODE_SUCCESS;
 }

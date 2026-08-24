@@ -20,9 +20,9 @@
 #ifndef LC_FORWARD_PHOTON_ID_ALGORITHM_H
 #define LC_FORWARD_PHOTON_ID_ALGORITHM_H 1
 
-#include "Pandora/Algorithm.h"
 #include "Objects/CartesianVector.h"
 #include "Objects/Cluster.h"
+#include "Pandora/Algorithm.h"
 
 #include <vector>
 
@@ -32,16 +32,17 @@ class ForwardPhotonIdAlgorithm : public pandora::Algorithm {
 public:
   class Factory : public pandora::AlgorithmFactory {
   public:
-    pandora::Algorithm *CreateAlgorithm() const override {
-      return new ForwardPhotonIdAlgorithm();
-    }
+    pandora::Algorithm* CreateAlgorithm() const override { return new ForwardPhotonIdAlgorithm(); }
   };
 
   ForwardPhotonIdAlgorithm() = default;
 
   /// A single HCAL hit: position, hadronic-scale energy and Cherenkov flag.
   /// Public so it can name the helper-method signatures defined out-of-line.
-  struct HcalHit { float x, y, z, e; bool isCher; };
+  struct HcalHit {
+    float x, y, z, e;
+    bool isCher;
+  };
 
 private:
   pandora::StatusCode Run() override;
@@ -49,31 +50,28 @@ private:
 
   /// Collect the cluster's HCAL hits and their total energy. Returns false if
   /// the cluster carries any ECAL hit (not HCAL-only) or has no HCAL energy.
-  bool CollectHcalHits(const pandora::Cluster *const pCluster,
-                       std::vector<HcalHit> &hits, float &eTotal) const;
+  bool CollectHcalHits(const pandora::Cluster* const pCluster, std::vector<HcalHit>& hits, float& eTotal) const;
 
   /// W0 log-weighted centroid of the HCAL hits. Returns false if degenerate.
-  bool W0Centroid(const std::vector<HcalHit> &hits, const float eTotal,
-                  pandora::CartesianVector &centroid) const;
+  bool W0Centroid(const std::vector<HcalHit>& hits, const float eTotal, pandora::CartesianVector& centroid) const;
 
   /// Cherenkov-to-scintillation energy ratio C/S; returns a negative sentinel
   /// when S <= 0 (pure-Cherenkov / empty), which the caller treats as a fail.
-  float CherToScintRatio(const std::vector<HcalHit> &hits) const;
+  float CherToScintRatio(const std::vector<HcalHit>& hits) const;
 
   /// DR core-energy fraction within a CoreMm cone of the centroid direction.
-  float CoreFraction(const std::vector<HcalHit> &hits,
-                     const pandora::CartesianVector &centroid,
+  float CoreFraction(const std::vector<HcalHit>& hits, const pandora::CartesianVector& centroid,
                      const float rCentroid) const;
 
   /// Dual-readout HCAL energy of a hit set: (S - ChiHcal * C) / (1 - ChiHcal).
-  float DRcorrHcal(const std::vector<HcalHit> &hits) const;
+  float DRcorrHcal(const std::vector<HcalHit>& hits) const;
 
-  float m_minCS       = 0.5f;    ///< min Cherenkov/scintillation ratio C/S
-  float m_minAbsEta   = 2.4f;    ///< min |eta| of the cluster centroid
-  float m_coreMm      = 25.f;    ///< core cone lateral size [mm]
-  float m_minCoreFrac = 0.6f;    ///< min DR core-energy fraction
-  float m_w0          = 4.6f;    ///< log-weight offset for the centroid
-  float m_chiHcal     = 0.31f;   ///< HCAL dual-readout chi factor
+  float m_minCS = 0.5f;       ///< min Cherenkov/scintillation ratio C/S
+  float m_minAbsEta = 2.4f;   ///< min |eta| of the cluster centroid
+  float m_coreMm = 25.f;      ///< core cone lateral size [mm]
+  float m_minCoreFrac = 0.6f; ///< min DR core-energy fraction
+  float m_w0 = 4.6f;          ///< log-weight offset for the centroid
+  float m_chiHcal = 0.31f;    ///< HCAL dual-readout chi factor
 };
 
 } // namespace lc_content

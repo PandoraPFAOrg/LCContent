@@ -16,12 +16,12 @@
  *   6   WriteBack      - AddToCluster / Cluster::Create
  */
 
-#include "Pandora/AlgorithmHeaders.h"
 #include "Api/PandoraContentApi.h"
-#include "Objects/Track.h"
-#include "Objects/Cluster.h"
 #include "Objects/CaloHit.h"
+#include "Objects/Cluster.h"
 #include "Objects/Helix.h"
+#include "Objects/Track.h"
+#include "Pandora/AlgorithmHeaders.h"
 
 #include "LCClustering/EcalSeededClusteringAlgorithm.h"
 #include "LCHelpers/VectorHelper.h"
@@ -45,17 +45,16 @@ namespace lc_content {
 pandora::StatusCode EcalSeededClusteringAlgorithm::Run() {
   // ---- get Pandora input lists ----
   // assume all existing clusters are ECAL clusters
-  const pandora::ClusterList *pEcalClusterList  = nullptr;
-  const pandora::CaloHitList *pCurrentCaloHitList = nullptr;
+  const pandora::ClusterList* pEcalClusterList = nullptr;
+  const pandora::CaloHitList* pCurrentCaloHitList = nullptr;
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      PandoraContentApi::GetCurrentList(*this, pEcalClusterList));
+                           PandoraContentApi::GetCurrentList(*this, pEcalClusterList));
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      PandoraContentApi::GetCurrentList(*this, pCurrentCaloHitList));
+                           PandoraContentApi::GetCurrentList(*this, pCurrentCaloHitList));
 
   // ---- Phase 1a: ECAL seed selection ----
   std::vector<SeededCluster> seeds;
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      SelectSeeds(*pEcalClusterList, seeds));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, SelectSeeds(*pEcalClusterList, seeds));
 
   // ---- Phase 1b: HCAL hit pool ----
   std::vector<HitCache> hcalPool; // this is the owner of the cached hit info
@@ -68,19 +67,16 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::Run() {
   pandora::CaloHitSet assignedSet;
 
   if (!seeds.empty()) {
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-        FormSeededClusters(seeds, hcalPool, assignedSet));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, FormSeededClusters(seeds, hcalPool, assignedSet));
   }
 
   // ---- Phase 5: unseeded clusters from leftover hits ----
   // Runs regardless of whether any ECAL seeds were present.
   std::vector<UnseededCluster> unseeded;
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      FormUnseededClusters(unseeded, hcalPool, assignedSet));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, FormUnseededClusters(unseeded, hcalPool, assignedSet));
 
   // ---- Phase 6: write back to Pandora ----
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      WriteBack(seeds, unseeded));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, WriteBack(seeds, unseeded));
 
   return pandora::STATUS_CODE_SUCCESS;
 }
@@ -89,17 +85,17 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::Run() {
 //  Phase 1a - SelectSeeds
 // ====================================================================== //
 
-pandora::StatusCode EcalSeededClusteringAlgorithm::SelectSeeds(const pandora::ClusterList &ecalClusters,
-                                                               std::vector<SeededCluster> &seeds) const {
+pandora::StatusCode EcalSeededClusteringAlgorithm::SelectSeeds(const pandora::ClusterList& ecalClusters,
+                                                               std::vector<SeededCluster>& seeds) const {
   // loop over ECAL clusters and filter out
-  for (const pandora::Cluster *const pClus : ecalClusters) {
+  for (const pandora::Cluster* const pClus : ecalClusters) {
     if (!pClus->IsAvailable())
       continue;
 
     SeededCluster s;
     s.pEcalCluster = pClus;
 
-    const auto &tracks = pClus->GetAssociatedTrackList();
+    const auto& tracks = pClus->GetAssociatedTrackList();
     if (tracks.empty()) {
       // Only grow HCAL behind neutral clusters tagged as neutral hadrons by the
       // external PID (cluster particleId == K_LONG, set upstream from the edm4hep
@@ -108,13 +104,13 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::SelectSeeds(const pandora::Cl
       if (pClus->GetParticleId() != pandora::K_LONG)
         continue;
 
-      s.isCharged  = false;
+      s.isCharged = false;
       s.pBestTrack = nullptr;
     } else {
       // Charged cluster: take the highest-momentum associated track
-      const pandora::Track *bestTrack = nullptr;
+      const pandora::Track* bestTrack = nullptr;
       float bestP = 0.f;
-      for (const auto *t : tracks) {
+      for (const auto* t : tracks) {
         const float p = t->GetMomentumAtDca().GetMagnitude();
 
         if (p > bestP) {
@@ -134,14 +130,13 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::SelectSeeds(const pandora::Cl
       // the cluster is ECAL-only and corrHad is just E_DR_ECAL.
       float eEcal = 0.f;
       if (m_useDualReadout) {
-        const pandora::EnergyCorrections *const pCorr =
-            PandoraContentApi::GetPlugins(*this)->GetEnergyCorrections();
+        const pandora::EnergyCorrections* const pCorr = PandoraContentApi::GetPlugins(*this)->GetEnergyCorrections();
         if (pCorr == nullptr)
           return pandora::STATUS_CODE_FAILURE;
 
         float corrEm = 0.f, corrHad = 0.f;
         PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-            pCorr->MakeEnergyCorrections(pClus, corrEm, corrHad));
+                                 pCorr->MakeEnergyCorrections(pClus, corrEm, corrHad));
         eEcal = corrHad;
       } else {
         eEcal = pClus->GetElectromagneticEnergy();
@@ -150,7 +145,7 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::SelectSeeds(const pandora::Cl
       if (eEcal >= m_chargedEcalOverPMax * bestP)
         continue;
 
-      s.isCharged  = true;
+      s.isCharged = true;
       s.pBestTrack = bestTrack;
     }
 
@@ -164,20 +159,20 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::SelectSeeds(const pandora::Cl
 //  Phase 1b - BuildHcalPool
 // ====================================================================== //
 
-void EcalSeededClusteringAlgorithm::BuildHcalPool(const pandora::CaloHitList &allHits,
-                                                  std::vector<HitCache> &hcalPool) const {
+void EcalSeededClusteringAlgorithm::BuildHcalPool(const pandora::CaloHitList& allHits,
+                                                  std::vector<HitCache>& hcalPool) const {
   // loop over all hits and cache HCAL hits above threshold
   hcalPool.reserve(allHits.size());
-  for (const pandora::CaloHit *const h : allHits) {
+  for (const pandora::CaloHit* const h : allHits) {
     if (h->GetHadronicEnergy() <= 0.f)
       continue; // skip ECAL
     if (h->GetHadronicEnergy() < m_hardThreshold)
       continue;
 
     HitCache hc;
-    hc.pHit  = h;
-    hc.pos   = h->GetPositionVector();
-    hc.energy  = h->GetHadronicEnergy();
+    hc.pHit = h;
+    hc.pos = h->GetPositionVector();
+    hc.energy = h->GetHadronicEnergy();
 
     float r;
     hc.pos.GetSphericalCoordinates(r, hc.phi, hc.theta);
@@ -190,7 +185,7 @@ void EcalSeededClusteringAlgorithm::BuildHcalPool(const pandora::CaloHitList &al
 //  Phase 2a - ExtrapolateToHcalSurface
 // ====================================================================== //
 
-pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(SeededCluster &s) const {
+pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(SeededCluster& s) const {
   pandora::CartesianVector impact(0.f, 0.f, 0.f);
 
   if (s.isCharged && s.pBestTrack != nullptr) {
@@ -199,9 +194,9 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
     //  pandora::Helix::GetPointOnCircle  (barrel)  and
     //  pandora::Helix::GetPointInZ       (endcap).
     // ---------------------------------------------------------------- //
-    const pandora::TrackState& tsAtCalo = s.pBestTrack->GetTrackStateAtCalorimeter(); 
-    const pandora::CartesianVector &rp  = tsAtCalo.GetPosition();
-    const pandora::CartesianVector &mom = tsAtCalo.GetMomentum();
+    const pandora::TrackState& tsAtCalo = s.pBestTrack->GetTrackStateAtCalorimeter();
+    const pandora::CartesianVector& rp = tsAtCalo.GetPosition();
+    const pandora::CartesianVector& mom = tsAtCalo.GetMomentum();
     const float pz = mom.GetZ();
 
     // Magnetic field for the helix.  UseBfieldAtIP (default) takes the field at the IP
@@ -210,8 +205,7 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
     // at the extrapolation START point (the track state at the calorimeter) instead.
     // Note that pandora::Helix itself assumes a constant field
     // a fair approximation over the short ECAL -> HCAL surface step.
-    const pandora::CartesianVector bFieldPosition =
-        m_useBFieldAtIP ? pandora::CartesianVector(0.f, 0.f, 0.f) : rp;
+    const pandora::CartesianVector bFieldPosition = m_useBFieldAtIP ? pandora::CartesianVector(0.f, 0.f, 0.f) : rp;
     const float bField = PandoraContentApi::GetPlugins(*this)->GetBFieldPlugin()->GetBField(bFieldPosition);
 
     // extrapolation based on the track state at calo
@@ -219,8 +213,7 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
 
     // Try barrel intersection
     pandora::CartesianVector barrelPoint(0.f, 0.f, 0.f);
-    const pandora::StatusCode scBarrel =
-        helix.GetPointOnCircle(m_hcalSurfaceR, rp, barrelPoint);
+    const pandora::StatusCode scBarrel = helix.GetPointOnCircle(m_hcalSurfaceR, rp, barrelPoint);
     const float barrelTime = (barrelPoint.GetZ() - rp.GetZ()) / pz;
 
     // Try endcap intersection (correct sign from momentum z-component).  Skipped for a
@@ -234,10 +227,8 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
       const float targetZ = (pz >= 0.f) ? m_hcalSurfaceZHalf : -m_hcalSurfaceZHalf;
       const pandora::StatusCode scEndcap = helix.GetPointInZ(targetZ, rp, endcapPoint);
       endcapTime = (endcapPoint.GetZ() - rp.GetZ()) / pz;
-      const float endcapR2 = endcapPoint.GetX()*endcapPoint.GetX() +
-                             endcapPoint.GetY()*endcapPoint.GetY();
-      endcapOk = (scEndcap == pandora::STATUS_CODE_SUCCESS) &&
-                 (endcapR2 <= m_hcalSurfaceR * m_hcalSurfaceR) &&
+      const float endcapR2 = endcapPoint.GetX() * endcapPoint.GetX() + endcapPoint.GetY() * endcapPoint.GetY();
+      endcapOk = (scEndcap == pandora::STATUS_CODE_SUCCESS) && (endcapR2 <= m_hcalSurfaceR * m_hcalSurfaceR) &&
                  (endcapTime > 0.f); // require forward extrapolation in time
     }
 
@@ -264,11 +255,10 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
     impact.GetSphericalCoordinates(_, phImpact, thImpact);
     rp.GetSphericalCoordinates(_, phCalo, thCalo);
     if (VectorHelper::AngularDR(thImpact, phImpact, thCalo, phCalo) > m_maxSearchDeltaR)
-      return pandora::STATUS_CODE_FAILURE; // fail silently (likely low pT tracks)    
+      return pandora::STATUS_CODE_FAILURE; // fail silently (likely low pT tracks)
   } else {
     // Neutral seed: project ECAL centroid radially through origin
-    const pandora::CartesianVector &centroid =
-        s.pEcalCluster->GetCentroid(s.pEcalCluster->GetInnerPseudoLayer());
+    const pandora::CartesianVector& centroid = s.pEcalCluster->GetCentroid(s.pEcalCluster->GetInnerPseudoLayer());
     float th, ph, _;
     centroid.GetSphericalCoordinates(_, ph, th);
     ProjectThetaPhiToHcalFace(th, ph, impact);
@@ -281,19 +271,18 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
   return pandora::STATUS_CODE_SUCCESS;
 } // ExtrapolateToHcalSurface
 
-void EcalSeededClusteringAlgorithm::ProjectThetaPhiToHcalFace(float theta,
-                                                              float phi,
-                                                              pandora::CartesianVector &out) const {
+void EcalSeededClusteringAlgorithm::ProjectThetaPhiToHcalFace(float theta, float phi,
+                                                              pandora::CartesianVector& out) const {
   const float thetaTrans = std::atan2(m_hcalSurfaceR, m_hcalSurfaceZHalf);
-  const bool  barrel   = (theta > thetaTrans) && (theta < (static_cast<float>(M_PI) - thetaTrans));
+  const bool barrel = (theta > thetaTrans) && (theta < (static_cast<float>(M_PI) - thetaTrans));
 
   if (barrel) {
     const float rho = m_hcalSurfaceR;
     // for a barrel point: x=r*cos(phi), y=r*sin(phi), z=r/tan(theta)
-    const float z   = rho / std::tan(theta);
+    const float z = rho / std::tan(theta);
     out = pandora::CartesianVector(rho * std::cos(phi), rho * std::sin(phi), z);
   } else {
-    const float z   = (std::cos(theta) >= 0.f) ? m_hcalSurfaceZHalf : -m_hcalSurfaceZHalf;
+    const float z = (std::cos(theta) >= 0.f) ? m_hcalSurfaceZHalf : -m_hcalSurfaceZHalf;
     // z and tan(theta) always share the same sign here (both >0 for +z endcap,
     // both <0 for -z endcap), so z*tan(theta) is always positive.
     const float rho = z * std::tan(theta);
@@ -305,16 +294,16 @@ void EcalSeededClusteringAlgorithm::ProjectThetaPhiToHcalFace(float theta,
 //  Phase 2b - BuildVicinities
 // ====================================================================== //
 
-void EcalSeededClusteringAlgorithm::BuildVicinities(std::vector<SeededCluster> &seeds,
-                                                    const std::vector<HitCache> &hcalPool) const {
+void EcalSeededClusteringAlgorithm::BuildVicinities(std::vector<SeededCluster>& seeds,
+                                                    const std::vector<HitCache>& hcalPool) const {
   const float maxDR2 = m_maxSearchDeltaR * m_maxSearchDeltaR;
-  for (auto &s : seeds) {
+  for (auto& s : seeds) {
     s.vicinity.clear();
 
     if (!s.alive)
       continue;
 
-    for (const auto &hc : hcalPool) {
+    for (const auto& hc : hcalPool) {
       if (VectorHelper::AngularDR2(s.thetaSeed, s.phiSeed, hc.theta, hc.phi) < maxDR2)
         s.vicinity.push_back(&hc);
     } // loop over hcalPool
@@ -325,45 +314,43 @@ void EcalSeededClusteringAlgorithm::BuildVicinities(std::vector<SeededCluster> &
 //  Phase 3a - FormSeedCircles
 // ====================================================================== //
 
-void EcalSeededClusteringAlgorithm::FormSeedCircles(std::vector<SeededCluster> &seeds,
-                                                    SeedCircleMap &circles) const {
+void EcalSeededClusteringAlgorithm::FormSeedCircles(std::vector<SeededCluster>& seeds, SeedCircleMap& circles) const {
   for (std::size_t i = 0; i < seeds.size(); ++i) {
-    SeededCluster &s = seeds[i];
+    SeededCluster& s = seeds[i];
     if (!s.alive)
       continue;
 
     // Strip search window (half-widths) around the projected impact direction.
     const float halfDTheta = 0.5f * (s.isCharged ? m_stripDThetaCharged : m_stripDThetaNeutral);
-    const float halfDPhi   = 0.5f * (s.isCharged ? m_stripDPhiCharged   : m_stripDPhiNeutral);
+    const float halfDPhi = 0.5f * (s.isCharged ? m_stripDPhiCharged : m_stripDPhiNeutral);
 
     // Collect candidate anchor hits inside the (theta, phi) strip, ordered by
     // opening-angle distance to the projection so the FIRST one passing the
     // density cut is automatically the closest qualifying anchor.
-    std::vector<const HitCache *> candidates;
-    for (const HitCache *hc : s.vicinity) {
+    std::vector<const HitCache*> candidates;
+    for (const HitCache* hc : s.vicinity) {
       if (std::fabs(hc->theta - s.thetaSeed) > halfDTheta)
         continue;
       if (std::fabs(VectorHelper::deltaPhi(hc->phi, s.phiSeed)) > halfDPhi)
         continue;
       candidates.push_back(hc);
     }
-    std::sort(candidates.begin(), candidates.end(),
-              [&s](const HitCache *a, const HitCache *b) {
-                return VectorHelper::AngularDR2(s.thetaSeed, s.phiSeed, a->theta, a->phi) <
-                       VectorHelper::AngularDR2(s.thetaSeed, s.phiSeed, b->theta, b->phi);
-              });
+    std::sort(candidates.begin(), candidates.end(), [&s](const HitCache* a, const HitCache* b) {
+      return VectorHelper::AngularDR2(s.thetaSeed, s.phiSeed, a->theta, a->phi) <
+             VectorHelper::AngularDR2(s.thetaSeed, s.phiSeed, b->theta, b->phi);
+    });
 
     // For each candidate (closest first) build its m_seedCircleRadius disk; the
     // first whose scintillation sum passes m_rhoSeed becomes the seed circle.
-    std::vector<const HitCache *> circle;
+    std::vector<const HitCache*> circle;
     bool found = false;
-    for (const HitCache *anchor : candidates) {
+    for (const HitCache* anchor : candidates) {
       const float r_anchor = anchor->pos.GetMagnitude();
       const float cosCut = r_anchor / std::sqrt(r_anchor * r_anchor + m_seedCircleRadius * m_seedCircleRadius);
 
       circle.clear();
       float scintSum = 0.f;
-      for (const HitCache *hc : s.vicinity) {
+      for (const HitCache* hc : s.vicinity) {
         if (hc->energy < m_growThreshold)
           continue;
         if (anchor->pos.GetCosOpeningAngle(hc->pos) > cosCut) {
@@ -393,28 +380,31 @@ void EcalSeededClusteringAlgorithm::FormSeedCircles(std::vector<SeededCluster> &
 //  Phase 3b - ResolveSeedCircleContests
 // ====================================================================== //
 
-void EcalSeededClusteringAlgorithm::ResolveSeedCircleContests(std::vector<SeededCluster> &seeds,
-                                                              SeedCircleMap &circles) const {
+void EcalSeededClusteringAlgorithm::ResolveSeedCircleContests(std::vector<SeededCluster>& seeds,
+                                                              SeedCircleMap& circles) const {
   // Build hit -> {seed indices} map
-  std::map<const HitCache *, std::vector<int>> contestants;
-  for (const auto &[idx, circle] : circles)
-    for (const HitCache *hc : circle)
+  std::map<const HitCache*, std::vector<int>> contestants;
+  for (const auto& [idx, circle] : circles)
+    for (const HitCache* hc : circle)
       contestants[hc].push_back(idx);
 
   // Resolve each contested hit with opening angle to the seed impact point
-  for (const auto &[hc, owners] : contestants) {
+  for (const auto& [hc, owners] : contestants) {
     if (owners.size() < 2)
       continue;
 
     // Pick winner: lowest opening-angle distance
-    int   winner = owners[0];
+    int winner = owners[0];
     float bestDist = std::numeric_limits<float>::max();
     for (int idx : owners) {
       if (!seeds[idx].alive)
         continue;
 
       const float d = OpeningAngleDist(seeds[idx].hcalImpactPoint, hc->pos);
-      if (d < bestDist) { bestDist = d; winner = idx; }
+      if (d < bestDist) {
+        bestDist = d;
+        winner = idx;
+      }
     } // loop over contestants for this hit
 
     // Remove from all losers
@@ -422,7 +412,7 @@ void EcalSeededClusteringAlgorithm::ResolveSeedCircleContests(std::vector<Seeded
       if (idx == winner)
         continue;
 
-      auto &cl = circles[idx];
+      auto& cl = circles[idx];
       cl.erase(std::remove(cl.begin(), cl.end(), hc), cl.end());
 
       if (cl.empty())
@@ -435,22 +425,22 @@ void EcalSeededClusteringAlgorithm::ResolveSeedCircleContests(std::vector<Seeded
 //  ComputeClusterState
 // ====================================================================== //
 
-void EcalSeededClusteringAlgorithm::ComputeClusterState(ClusterState &gc) const {
+void EcalSeededClusteringAlgorithm::ComputeClusterState(ClusterState& gc) const {
   float scintSum = 0.f, cherenSum = 0.f, totE = 0.f;
-  for (const HitCache *hc : gc.hits) {
+  for (const HitCache* hc : gc.hits) {
     totE += hc->energy;
-    if (hc->isCheren) cherenSum += hc->energy;
-    else              scintSum  += hc->energy;
+    if (hc->isCheren)
+      cherenSum += hc->energy;
+    else
+      scintSum += hc->energy;
   }
 
-  gc.energy = m_useDualReadout
-      ? (scintSum - m_chiHcal * cherenSum) / (1.f - m_chiHcal)
-      : totE;
+  gc.energy = m_useDualReadout ? (scintSum - m_chiHcal * cherenSum) / (1.f - m_chiHcal) : totE;
 
   pandora::CartesianVector bary(0.f, 0.f, 0.f);
   float totW = 0.f;
   if (totE > 0.f) {
-    for (const HitCache *hc : gc.hits) {
+    for (const HitCache* hc : gc.hits) {
       const float w = std::max(0.f, m_w0 + std::log(hc->energy / totE));
       if (w > 0.f) {
         bary += hc->pos * w;
@@ -459,8 +449,7 @@ void EcalSeededClusteringAlgorithm::ComputeClusterState(ClusterState &gc) const 
     } // loop over hits in cluster
   }
 
-  gc.barycenter = (totW > 0.f) ? bary * (1.f / totW)
-                                : pandora::CartesianVector(0.f, 0.f, 0.f);
+  gc.barycenter = (totW > 0.f) ? bary * (1.f / totW) : pandora::CartesianVector(0.f, 0.f, 0.f);
 } // ComputeClusterState
 
 // ====================================================================== //
@@ -468,9 +457,8 @@ void EcalSeededClusteringAlgorithm::ComputeClusterState(ClusterState &gc) const 
 // ====================================================================== //
 
 std::vector<EcalSeededClusteringAlgorithm::ClusterState>
-EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
-                                    const std::vector<ClusterState> &clusters,
-                                    pandora::CaloHitSet &assignedSet) const {
+EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy, const std::vector<ClusterState>& clusters,
+                                    pandora::CaloHitSet& assignedSet) const {
   std::vector<ClusterState> result(clusters); // working copy
   const int n = static_cast<int>(result.size());
   if (n == 0)
@@ -480,7 +468,7 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
 
   // Per-cluster frontier: hits added in the last layer.
   // Initialised from each cluster's seed-circle hits.
-  std::map<int, std::vector<const HitCache *>> frontier;
+  std::map<int, std::vector<const HitCache*>> frontier;
   for (int i = 0; i < n; ++i)
     frontier[i] = result[i].hits;
 
@@ -488,26 +476,29 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
   std::vector<int> rep(n);
   std::iota(rep.begin(), rep.end(), 0);
   auto findRep = [&rep](int x) -> int {
-    while (rep[x] != x) { rep[x] = rep[rep[x]]; x = rep[x]; }
+    while (rep[x] != x) {
+      rep[x] = rep[rep[x]];
+      x = rep[x];
+    }
     return x;
   };
   auto mergeReps = [&rep, &findRep](int a, int b) {
-    a = findRep(a); b = findRep(b);
-    if (a != b) rep[b] = a;
+    a = findRep(a);
+    b = findRep(b);
+    if (a != b)
+      rep[b] = a;
   };
 
   // Shared lambda: accumulate candidates from a (frontier, vicinity) pair into
   // the candidates map, keyed by the given cluster index / representative id.
-  auto collectCandidates = [&](std::map<const HitCache *, std::vector<int>> &candidates,
-                               int id,
-                               const std::vector<const HitCache *> &front,
-                               const auto &vicinity) {
-    for (const HitCache *fhc : front) {
+  auto collectCandidates = [&](std::map<const HitCache*, std::vector<int>>& candidates, int id,
+                               const std::vector<const HitCache*>& front, const auto& vicinity) {
+    for (const HitCache* fhc : front) {
       // Max opening angle for adjacency: atan2(adjCut, r_fhc)
-      const float r_fhc  = fhc->pos.GetMagnitude();
+      const float r_fhc = fhc->pos.GetMagnitude();
       const float cosCut = r_fhc / std::sqrt(r_fhc * r_fhc + adjCut * adjCut);
 
-      for (const HitCache *nb : vicinity) {
+      for (const HitCache* nb : vicinity) {
         if (assignedSet.count(nb->pHit))
           continue;
         if (nb->energy < m_growThreshold)
@@ -519,7 +510,7 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
   };
 
   // Shared lambda: deduplicate a sorted-or-unsorted claimers vector in-place.
-  auto deduplicateClaimers = [](std::vector<int> &claimers) {
+  auto deduplicateClaimers = [](std::vector<int>& claimers) {
     std::sort(claimers.begin(), claimers.end());
     claimers.erase(std::unique(claimers.begin(), claimers.end()), claimers.end());
   };
@@ -533,21 +524,24 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
     //  ResolveByDist: each cluster searches its own vicinity independently.
     //  MergeClusters: build per-representative vicinity union, then search.
     // ---------------------------------------------------------------- //
-    std::map<int, std::vector<const HitCache *>> nextFrontier;
+    std::map<int, std::vector<const HitCache*>> nextFrontier;
 
     if (strategy == GrowStrategy::ResolveByDist) {
-      std::map<const HitCache *, std::vector<int>> candidates;
+      std::map<const HitCache*, std::vector<int>> candidates;
       for (int i = 0; i < n; ++i)
         collectCandidates(candidates, i, frontier[i], result[i].vicinity);
 
-      for (auto &[hc, claimers] : candidates) {
+      for (auto& [hc, claimers] : candidates) {
         deduplicateClaimers(claimers);
 
-        int   winner = claimers[0];
+        int winner = claimers[0];
         float bestDist = std::numeric_limits<float>::max();
         for (int idx : claimers) {
           const float d = OpeningAngleDist(result[idx].barycenter, hc->pos);
-          if (d < bestDist) { bestDist = d; winner = idx; }
+          if (d < bestDist) {
+            bestDist = d;
+            winner = idx;
+          }
         }
         assignedSet.insert(hc->pHit);
         result[winner].hits.push_back(hc);
@@ -556,24 +550,24 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
       } // loop over candidates
 
       // recompute cluster states
-      for (const auto &[i, _] : nextFrontier)
+      for (const auto& [i, _] : nextFrontier)
         ComputeClusterState(result[i]);
     } else { // MergeClusters: collapse frontier and vicinity into per-representative sets
-      std::map<int, std::vector<const HitCache *>> repFront;
-      std::map<int, std::set<const HitCache *>> repVicinity;
+      std::map<int, std::vector<const HitCache*>> repFront;
+      std::map<int, std::set<const HitCache*>> repVicinity;
       for (int i = 0; i < n; ++i) {
         const int r = findRep(i);
-        for (const HitCache *hc : frontier[i])
+        for (const HitCache* hc : frontier[i])
           repFront[r].push_back(hc);
-        for (const HitCache *hc : result[i].vicinity)
+        for (const HitCache* hc : result[i].vicinity)
           repVicinity[r].insert(hc);
       } // loop over clusters to build repFront and repVicinity
 
-      std::map<const HitCache *, std::vector<int>> candidates;
-      for (const auto &[r, fr] : repFront)
+      std::map<const HitCache*, std::vector<int>> candidates;
+      for (const auto& [r, fr] : repFront)
         collectCandidates(candidates, r, fr, repVicinity[r]);
 
-      for (auto &[hc, claimers] : candidates) {
+      for (auto& [hc, claimers] : candidates) {
         deduplicateClaimers(claimers);
 
         int winner = findRep(claimers[0]);
@@ -599,9 +593,9 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
         continue;
 
       // Merge hits and vicinity into representative cluster
-      for (const HitCache *hc : result[i].hits)
+      for (const HitCache* hc : result[i].hits)
         result[r].hits.push_back(hc);
-      for (const HitCache *hc : result[i].vicinity)
+      for (const HitCache* hc : result[i].vicinity)
         result[r].vicinity.push_back(hc);
 
       // Clear the non-representative cluster's hits and vicinity.
@@ -611,10 +605,8 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
     } // loop over clusters to merge into representatives
 
     // Single erase pass after the loop: remove all now-empty non-representatives.
-    result.erase(
-        std::remove_if(result.begin(), result.end(),
-                       [](const ClusterState &gc) { return gc.hits.empty(); }),
-        result.end());
+    result.erase(std::remove_if(result.begin(), result.end(), [](const ClusterState& gc) { return gc.hits.empty(); }),
+                 result.end());
   } // if MergeClusters
 
   return result;
@@ -624,11 +616,11 @@ EcalSeededClusteringAlgorithm::Grow(GrowStrategy strategy,
 //  Phases 2–4 - FormSeededClusters
 // ====================================================================== //
 
-pandora::StatusCode EcalSeededClusteringAlgorithm::FormSeededClusters(std::vector<SeededCluster> &seeds,
-                                                                      const std::vector<HitCache> &hcalPool,
-                                                                      pandora::CaloHitSet &assignedSet) const {
+pandora::StatusCode EcalSeededClusteringAlgorithm::FormSeededClusters(std::vector<SeededCluster>& seeds,
+                                                                      const std::vector<HitCache>& hcalPool,
+                                                                      pandora::CaloHitSet& assignedSet) const {
   // ---- Phase 2a: project seeds onto HCAL surface ----
-  for (auto &s : seeds) {
+  for (auto& s : seeds) {
     if (ExtrapolateToHcalSurface(s) != pandora::STATUS_CODE_SUCCESS)
       s.alive = false;
   }
@@ -653,9 +645,9 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormSeededClusters(std::vecto
     aliveIdx.push_back(i);
 
     ClusterState cs;
-    cs.hits     = circles[i];       // HitCache* directly - no map lookup needed
+    cs.hits = circles[i];            // HitCache* directly - no map lookup needed
     cs.vicinity = seeds[i].vicinity; // search space for this seed
-    for (const HitCache *hc : cs.hits)
+    for (const HitCache* hc : cs.hits)
       assignedSet.insert(hc->pHit);
 
     ComputeClusterState(cs);
@@ -666,7 +658,7 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormSeededClusters(std::vecto
 
   // Write grown state back into each SeededCluster (inherits ClusterState).
   for (int j = 0; j < static_cast<int>(aliveIdx.size()); ++j) {
-    auto &s = seeds[aliveIdx[j]];
+    auto& s = seeds[aliveIdx[j]];
     s.hits = grown[j].hits;
     ComputeClusterState(s);
   }
@@ -678,13 +670,13 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormSeededClusters(std::vecto
 //  Phase 5 - FormUnseededClusters
 // ====================================================================== //
 
-pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vector<UnseededCluster> &unseeded,
-                                                                        const std::vector<HitCache> &hcalPool,
-                                                                        pandora::CaloHitSet &assignedSet) const {
+pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vector<UnseededCluster>& unseeded,
+                                                                        const std::vector<HitCache>& hcalPool,
+                                                                        pandora::CaloHitSet& assignedSet) const {
   // Collect remaining HCAL hits not consumed by Phase 4.
-  std::vector<const HitCache *> remaining;
+  std::vector<const HitCache*> remaining;
   remaining.reserve(hcalPool.size());
-  for (const auto &hc : hcalPool) {
+  for (const auto& hc : hcalPool) {
     if (!assignedSet.count(hc.pHit))
       remaining.push_back(&hc);
   }
@@ -694,7 +686,7 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vec
 
   // Sort by descending energy for reproducible seeding order.
   std::sort(remaining.begin(), remaining.end(),
-            [](const HitCache *a, const HitCache *b) { return a->energy > b->energy; });
+            [](const HitCache* a, const HitCache* b) { return a->energy > b->energy; });
 
   // ------------------------------------------------------------------ //
   //  Step A: find candidate seed centers - local scint circle sum >= rhoUnseeded.
@@ -704,14 +696,14 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vec
   std::vector<ClusterState> initStates;
   const float maxDR2 = m_maxSearchDeltaR * m_maxSearchDeltaR;
 
-  for (const HitCache *center : remaining) {
+  for (const HitCache* center : remaining) {
     // Max opening angles for this center hit: atan2(cut, r_center)
-    const float r_center   = center->pos.GetMagnitude();
+    const float r_center = center->pos.GetMagnitude();
     const float cosSeedCut = r_center / std::sqrt(r_center * r_center + m_seedCircleRadius * m_seedCircleRadius);
 
     float scintSum = 0.f;
     ClusterState gc;
-    for (const HitCache *nb : remaining) {
+    for (const HitCache* nb : remaining) {
       const float dr2 = VectorHelper::AngularDR2(center->theta, center->phi, nb->theta, nb->phi);
 
       // Vicinity: all hits in range, regardless of threshold or circle ownership
@@ -737,7 +729,7 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vec
     if (scintSum < m_rhoUnseeded)
       continue;
 
-    for (const HitCache *hc : gc.hits)
+    for (const HitCache* hc : gc.hits)
       circleAssigned.insert(hc->pHit);
 
     ComputeClusterState(gc);
@@ -751,14 +743,14 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vec
   //  BFS with merge-on-contest via shared Grow().
   //  Pre-assign circle hits so Grow() won't re-claim them.
   // ------------------------------------------------------------------ //
-  for (const auto &gc : initStates)
-    for (const HitCache *hc : gc.hits)
+  for (const auto& gc : initStates)
+    for (const HitCache* hc : gc.hits)
       assignedSet.insert(hc->pHit);
 
   auto result = Grow(GrowStrategy::MergeClusters, initStates, assignedSet);
 
   // Emit one UnseededCluster per surviving root.
-  for (auto &gc : result) {
+  for (auto& gc : result) {
     if (gc.hits.empty())
       continue;
 
@@ -775,57 +767,58 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vec
 //  Phase 6 - WriteBack
 // ====================================================================== //
 
-pandora::StatusCode EcalSeededClusteringAlgorithm::WriteBack(std::vector<SeededCluster> &seeds,
-                                                             std::vector<UnseededCluster> &unseeded) const {
+pandora::StatusCode EcalSeededClusteringAlgorithm::WriteBack(std::vector<SeededCluster>& seeds,
+                                                             std::vector<UnseededCluster>& unseeded) const {
   // Extend each surviving ECAL cluster with its HCAL hits
-  for (auto &s : seeds) {
+  for (auto& s : seeds) {
     if (!s.alive || s.hits.empty())
       continue;
 
-    for (const HitCache *hc : s.hits) {
+    for (const HitCache* hc : s.hits) {
       PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-          PandoraContentApi::AddToCluster(*this, s.pEcalCluster, hc->pHit));
+                               PandoraContentApi::AddToCluster(*this, s.pEcalCluster, hc->pHit));
     }
   }
 
   // Get current list name before proceeding
   std::string inputClusterListName;
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      PandoraContentApi::GetCurrentListName<pandora::Cluster>(*this, inputClusterListName));
+                           PandoraContentApi::GetCurrentListName<pandora::Cluster>(*this, inputClusterListName));
 
   // Recreate cluster list within the pandora framework
   // (this will allow creating new objects)
   const pandora::ClusterList* pClusterList = nullptr;
   std::string clusterListName = m_outputClusterListName + "Tmp";
 
-  PANDORA_RETURN_RESULT_IF(
-      pandora::STATUS_CODE_SUCCESS, !=,
-      PandoraContentApi::CreateTemporaryListAndSetCurrent(*this, pClusterList, clusterListName));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::CreateTemporaryListAndSetCurrent(*this, pClusterList, clusterListName));
 
   // Create new clusters for unseeded HCAL clusters
-  for (auto &u : unseeded) {
+  for (auto& u : unseeded) {
     pandora::CaloHitList hitList;
-    for (const HitCache *hc : u.hits)
+    for (const HitCache* hc : u.hits)
       hitList.push_back(hc->pHit);
 
-    const pandora::Cluster *pNewCluster = nullptr;
+    const pandora::Cluster* pNewCluster = nullptr;
     PandoraContentApi::Cluster::Parameters params;
     params.m_caloHitList = hitList;
     PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-        PandoraContentApi::Cluster::Create(*this, params, pNewCluster));
+                             PandoraContentApi::Cluster::Create(*this, params, pNewCluster));
   }
 
   // need these to store the pandora cluster list
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, // save the previous list to the new output (seeded clusters)
-                            PandoraContentApi::SaveList<pandora::Cluster>(*this, inputClusterListName, m_outputClusterListName));
+  PANDORA_RETURN_RESULT_IF(
+      pandora::STATUS_CODE_SUCCESS, !=, // save the previous list to the new output (seeded clusters)
+      PandoraContentApi::SaveList<pandora::Cluster>(*this, inputClusterListName, m_outputClusterListName));
 
   if (!unseeded.empty()) { // only replace the current list if we actually created new clusters
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, // save the current list to the new output (unseeded clusters)
-                              PandoraContentApi::SaveList<pandora::Cluster>(*this, m_outputClusterListName));
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS,
+                             !=, // save the current list to the new output (unseeded clusters)
+                             PandoraContentApi::SaveList<pandora::Cluster>(*this, m_outputClusterListName));
   }
 
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, // make the new output the current list
-                            PandoraContentApi::ReplaceCurrentList<pandora::Cluster>(*this, m_outputClusterListName));
+                           PandoraContentApi::ReplaceCurrentList<pandora::Cluster>(*this, m_outputClusterListName));
 
   return pandora::STATUS_CODE_SUCCESS;
 }
@@ -834,9 +827,9 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::WriteBack(std::vector<SeededC
 //  Helper functions
 // ====================================================================== //
 
-float EcalSeededClusteringAlgorithm::OpeningAngleDist(const pandora::CartesianVector &clusDir,
-                                                      const pandora::CartesianVector &hitPos) const {
-  const float r_hit  = hitPos.GetMagnitude();
+float EcalSeededClusteringAlgorithm::OpeningAngleDist(const pandora::CartesianVector& clusDir,
+                                                      const pandora::CartesianVector& hitPos) const {
+  const float r_hit = hitPos.GetMagnitude();
   const float r_clus = clusDir.GetMagnitude();
   if (r_hit <= 0.f || r_clus <= 0.f)
     return std::numeric_limits<float>::max();
@@ -846,11 +839,9 @@ float EcalSeededClusteringAlgorithm::OpeningAngleDist(const pandora::CartesianVe
   return 1.f - cosA;
 } // OpeningAngleDist
 
-bool EcalSeededClusteringAlgorithm::IsHcalHit(const pandora::CaloHit *h) const {
-  return h->GetHadronicEnergy() > 0.f;
-}
+bool EcalSeededClusteringAlgorithm::IsHcalHit(const pandora::CaloHit* h) const { return h->GetHadronicEnergy() > 0.f; }
 
-bool EcalSeededClusteringAlgorithm::IsCherenkovHit(const pandora::CaloHit *h) const {
+bool EcalSeededClusteringAlgorithm::IsCherenkovHit(const pandora::CaloHit* h) const {
   return h->GetHitType() == pandora::DRC_CHEREN;
 }
 
@@ -859,7 +850,7 @@ bool EcalSeededClusteringAlgorithm::IsCherenkovHit(const pandora::CaloHit *h) co
 // ====================================================================== //
 
 pandora::StatusCode EcalSeededClusteringAlgorithm::ReadHcalGeometry() {
-  const pandora::GeometryManager *const pGeometry = PandoraContentApi::GetGeometry(*this);
+  const pandora::GeometryManager* const pGeometry = PandoraContentApi::GetGeometry(*this);
 
   if (!pGeometry)
     return pandora::STATUS_CODE_NOT_INITIALIZED;
@@ -872,8 +863,8 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ReadHcalGeometry() {
   // the z half-length is then effectively infinite, so every direction lands on the barrel.
   try {
     m_hcalSurfaceZHalf = pGeometry->GetSubDetector(pandora::HCAL_ENDCAP).GetInnerZCoordinate();
-  } catch (const pandora::StatusCodeException &) {
-    m_hasHcalEndcap    = false;
+  } catch (const pandora::StatusCodeException&) {
+    m_hasHcalEndcap = false;
     m_hcalSurfaceZHalf = std::numeric_limits<float>::max();
   }
 
@@ -887,44 +878,45 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ReadHcalGeometry() {
 //  ReadSettings
 // ====================================================================== //
 
-pandora::StatusCode EcalSeededClusteringAlgorithm::ReadSettings(
-    const pandora::TiXmlHandle xmlHandle) {
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+pandora::StatusCode EcalSeededClusteringAlgorithm::ReadSettings(const pandora::TiXmlHandle xmlHandle) {
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
       pandora::XmlHelper::ReadValue(xmlHandle, "OutputClusterListName", m_outputClusterListName));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "UseDualReadout", m_useDualReadout));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "UseDualReadout", m_useDualReadout));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "MomentumThreshold", m_pThres));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "MomentumThreshold", m_pThres));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "HardThreshold", m_hardThreshold));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "HardThreshold", m_hardThreshold));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "GrowThreshold", m_growThreshold));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "GrowThreshold", m_growThreshold));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "MaxSearchDR", m_maxSearchDeltaR));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "MaxSearchDR", m_maxSearchDeltaR));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "SeedCircleR", m_seedCircleRadius));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "SeedCircleR", m_seedCircleRadius));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "StripDThetaCharged", m_stripDThetaCharged));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "StripDThetaCharged", m_stripDThetaCharged));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "StripDPhiCharged", m_stripDPhiCharged));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "StripDPhiCharged", m_stripDPhiCharged));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "StripDThetaNeutral", m_stripDThetaNeutral));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "StripDThetaNeutral", m_stripDThetaNeutral));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "StripDPhiNeutral", m_stripDPhiNeutral));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "StripDPhiNeutral", m_stripDPhiNeutral));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "AdjacencyR", m_adjacencyRadius));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "AdjacencyR", m_adjacencyRadius));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "SeedThreshold", m_rhoSeed));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "SeedThreshold", m_rhoSeed));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "UnseededThreshold", m_rhoUnseeded));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "UnseededThreshold", m_rhoUnseeded));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "W0", m_w0));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "W0", m_w0));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "ChiHcal", m_chiHcal));
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "ChiHcal", m_chiHcal));
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
       pandora::XmlHelper::ReadValue(xmlHandle, "ChargedEcalOverPMax", m_chargedEcalOverPMax));
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-      pandora::XmlHelper::ReadValue(xmlHandle, "UseBfieldAtIP", m_useBFieldAtIP));
+                                  pandora::XmlHelper::ReadValue(xmlHandle, "UseBfieldAtIP", m_useBFieldAtIP));
 
   // The HCAL inner surface comes from the detector geometry, not from XML.
   PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, this->ReadHcalGeometry());

@@ -4,11 +4,11 @@
  *  @brief  ONNX cluster-grouping satellite assignment (SPLIT policy).  Token set, feature layout
  *          and pfo-indexing reproduce the model's training tokenisation.
  */
-#include "Pandora/AlgorithmHeaders.h"
 #include "Api/PandoraContentApi.h"
-#include "Objects/Cluster.h"
 #include "Objects/CaloHit.h"
+#include "Objects/Cluster.h"
 #include "Objects/Track.h"
+#include "Pandora/AlgorithmHeaders.h"
 
 #include "LCHelpers/VectorHelper.h"
 #include "MLInference/SatelliteAssignmentOnnxAlgorithm.h"
@@ -31,39 +31,39 @@ namespace lc_content {
 SatelliteAssignmentOnnxAlgorithm::~SatelliteAssignmentOnnxAlgorithm() = default;
 
 void SatelliteAssignmentOnnxAlgorithm::LoadModel() {
-  m_session.reset(new OnnxSession(m_modelPath));   // one intra-op thread; invalid on a bad path
+  m_session.reset(new OnnxSession(m_modelPath)); // one intra-op thread; invalid on a bad path
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-SatelliteAssignmentOnnxAlgorithm::Hit SatelliteAssignmentOnnxAlgorithm::ExtractHit(const CaloHit *const pHit) {
+SatelliteAssignmentOnnxAlgorithm::Hit SatelliteAssignmentOnnxAlgorithm::ExtractHit(const CaloHit* const pHit) {
   Hit hit;
   float r = 0.f, phi = 0.f, theta = 0.f;
-  pHit->GetPositionVector().GetSphericalCoordinates(r, phi, theta);   // a calo hit is never at the origin
-  hit.theta  = theta;
-  hit.phi    = phi;
+  pHit->GetPositionVector().GetSphericalCoordinates(r, phi, theta); // a calo hit is never at the origin
+  hit.theta = theta;
+  hit.phi = phi;
   hit.energy = pHit->GetInputEnergy();
-  hit.isEcal = (pHit->GetHadronicEnergy() <= 0.f);                    // ECAL hits carry no hadronic energy
+  hit.isEcal = (pHit->GetHadronicEnergy() <= 0.f); // ECAL hits carry no hadronic energy
   hit.isCher = (pHit->GetHitType() == DRC_CHEREN);
-  hit.depth  = hit.isEcal ? static_cast<float>(pHit->GetLayer()) : SENT;  // ECAL layer index; SENT for HCAL
+  hit.depth = hit.isEcal ? static_cast<float>(pHit->GetLayer()) : SENT; // ECAL layer index; SENT for HCAL
   return hit;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-bool SatelliteAssignmentOnnxAlgorithm::BuildInfo(const Cluster *const pCluster, ClusterInfo &info) const {
+bool SatelliteAssignmentOnnxAlgorithm::BuildInfo(const Cluster* const pCluster, ClusterInfo& info) const {
   CaloHitList caloHits;
   pCluster->GetOrderedCaloHitList().FillCaloHitList(caloHits);
   if (caloHits.empty())
     return false;
 
   double sumX = 0., sumY = 0., sumZ = 0., sumE = 0.;
-  for (const CaloHit *const pHit : caloHits) {
+  for (const CaloHit* const pHit : caloHits) {
     const float energy = pHit->GetInputEnergy();
     if (energy <= 0.f)
       continue;
     info.hits.push_back(ExtractHit(pHit));
-    const CartesianVector &position = pHit->GetPositionVector();
+    const CartesianVector& position = pHit->GetPositionVector();
     sumX += position.GetX() * energy;
     sumY += position.GetY() * energy;
     sumZ += position.GetZ() * energy;
@@ -72,26 +72,25 @@ bool SatelliteAssignmentOnnxAlgorithm::BuildInfo(const Cluster *const pCluster, 
   if (info.hits.empty() || sumE <= 0.)
     return false;
 
-  const CartesianVector centroid(static_cast<float>(sumX / sumE),
-                                 static_cast<float>(sumY / sumE),
+  const CartesianVector centroid(static_cast<float>(sumX / sumE), static_cast<float>(sumY / sumE),
                                  static_cast<float>(sumZ / sumE));
   if (centroid.GetMagnitude() <= std::numeric_limits<float>::epsilon())
     return false;
 
-  info.pCluster    = pCluster;
+  info.pCluster = pCluster;
   info.centroidDir = centroid.GetUnitVector();
 
   // any track reaching the calorimeter makes this a charged primary (track state taken there, no
   // projection; no |p| cut -- matches the training tokenisation); the highest-momentum track is used
-  const Track *pBestTrack = nullptr;
+  const Track* pBestTrack = nullptr;
   float bestMomentum = 0.f;
-  for (const Track *const pTrack : pCluster->GetAssociatedTrackList()) {
+  for (const Track* const pTrack : pCluster->GetAssociatedTrackList()) {
     if (!pTrack->ReachesCalorimeter())
       continue;
     const float momentum = pTrack->GetTrackStateAtCalorimeter().GetMomentum().GetMagnitude();
     if (momentum > bestMomentum) {
       bestMomentum = momentum;
-      pBestTrack   = pTrack;
+      pBestTrack = pTrack;
     }
   }
   if (pBestTrack) {
@@ -99,8 +98,8 @@ bool SatelliteAssignmentOnnxAlgorithm::BuildInfo(const Cluster *const pCluster, 
     pBestTrack->GetTrackStateAtCalorimeter().GetPosition().GetSphericalCoordinates(r, phi, theta);
     info.hasTrack = true;
     info.trkTheta = theta;
-    info.trkPhi   = phi;
-    info.trkP     = bestMomentum;
+    info.trkPhi = phi;
+    info.trkP = bestMomentum;
   }
   return true;
 }
@@ -112,23 +111,23 @@ bool SatelliteAssignmentOnnxAlgorithm::BuildInfo(const Cluster *const pCluster, 
 // The ONNX graph returns one affinity logit per neighbour pfo; we sigmoid them and return one
 // NeighbourAff per neighbour (its cluster, whether it is tracked, and the affinity).
 
-bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(
-    const std::vector<ClusterInfo> &clusters, const int candIndex,
-    std::vector<NeighbourAff> &out) const {
+bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(const std::vector<ClusterInfo>& clusters,
+                                                                  const int candIndex,
+                                                                  std::vector<NeighbourAff>& out) const {
   out.clear();
   if (!m_session || !m_session->IsValid())
     return false;
 
   // Reference frame = candidate's energy-weighted centroid direction; all angles are relative to it.
-  const ClusterInfo &candidate = clusters[candIndex];
+  const ClusterInfo& candidate = clusters[candIndex];
   float r = 0.f, anchorPhi = 0.f, anchorTheta = 0.f;
   candidate.centroidDir.GetSphericalCoordinates(r, anchorPhi, anchorTheta);
 
-  std::vector<float>   tokenData;
+  std::vector<float> tokenData;
   std::vector<int64_t> typeIds, pfoIds;
 
   // A calo-hit token: [dTheta, dPhi, depth, ln E, isCher, isEcal].
-  auto addHit = [&](const Hit &hit, const int type, const int pfo) {
+  auto addHit = [&](const Hit& hit, const int type, const int pfo) {
     tokenData.push_back(hit.theta - anchorTheta);
     tokenData.push_back(VectorHelper::deltaPhi(hit.phi, anchorPhi));
     tokenData.push_back(hit.depth);
@@ -140,7 +139,7 @@ bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(
   };
 
   // A track token: the ln|p| carrier at the calorimeter; depth/cher/ecal are sentinels.
-  auto addTrack = [&](const ClusterInfo &cluster, const int pfo) {
+  auto addTrack = [&](const ClusterInfo& cluster, const int pfo) {
     tokenData.push_back(cluster.trkTheta - anchorTheta);
     tokenData.push_back(VectorHelper::deltaPhi(cluster.trkPhi, anchorPhi));
     tokenData.push_back(SENT);
@@ -155,19 +154,19 @@ bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(
   auto topByEnergy = [](std::vector<Hit> hits, const int k) {
     if (static_cast<int>(hits.size()) > k) {
       std::nth_element(hits.begin(), hits.begin() + k, hits.end(),
-                       [](const Hit &a, const Hit &b) { return a.energy > b.energy; });
+                       [](const Hit& a, const Hit& b) { return a.energy > b.energy; });
       hits.resize(static_cast<std::size_t>(k));
     }
     return hits;
   };
 
   // Own tokens live under pfo 0.
-  for (const Hit &hit : topByEnergy(candidate.hits, m_budgetOwn))
+  for (const Hit& hit : topByEnergy(candidate.hits, m_budgetOwn))
     addHit(hit, TYPE_OWN, 0);
 
   // Every in-cone neighbour (no cap on their number) gets a 1-based pfo index; the k-th neighbour
   // maps to output slot k-1.
-  std::vector<std::pair<const Cluster *, bool>> neighbourOfPfo;   // per pfo: (cluster, hasTrack)
+  std::vector<std::pair<const Cluster*, bool>> neighbourOfPfo; // per pfo: (cluster, hasTrack)
   int pfo = 0;
   for (int j = 0; j < static_cast<int>(clusters.size()); ++j) {
     if (j == candIndex)
@@ -176,8 +175,8 @@ bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(
       continue;
 
     ++pfo;
-    const ClusterInfo &neighbour = clusters[j];
-    for (const Hit &hit : topByEnergy(neighbour.hits, m_budgetNbr))
+    const ClusterInfo& neighbour = clusters[j];
+    for (const Hit& hit : topByEnergy(neighbour.hits, m_budgetNbr))
       addHit(hit, TYPE_OTHER, pfo);
     if (neighbour.hasTrack)
       addTrack(neighbour, pfo);
@@ -186,25 +185,24 @@ bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(
   }
 
   const int nNeighbours = pfo;
-  if (nNeighbours == 0)                                           // nothing in cone -> no affinities
+  if (nNeighbours == 0) // nothing in cone -> no affinities
     return false;
 
   // Pack the inputs (order matches the model's inputs) and run via the shared ONNX session.
   const int64_t nTokens = static_cast<int64_t>(typeIds.size());
   const std::vector<OnnxSession::Input> inputs = {
       {{1, nTokens, N_FEAT}, OnnxSession::Input::Type::Float, tokenData.data()},
-      {{1, nTokens},         OnnxSession::Input::Type::Int64, typeIds.data()},
-      {{1, nTokens},         OnnxSession::Input::Type::Int64, pfoIds.data()},
+      {{1, nTokens}, OnnxSession::Input::Type::Int64, typeIds.data()},
+      {{1, nTokens}, OnnxSession::Input::Type::Int64, pfoIds.data()},
   };
   const std::vector<std::vector<float>> outputs = m_session->Run(inputs);
   if (outputs.empty() || outputs[0].size() < static_cast<std::size_t>(nNeighbours))
-    return false;                                                    // inference failed / short output
+    return false; // inference failed / short output
 
-  const std::vector<float> &logits = outputs[0];                     // length == nNeighbours (dynamic)
+  const std::vector<float>& logits = outputs[0]; // length == nNeighbours (dynamic)
   out.reserve(nNeighbours);
-  for (int k = 0; k < nNeighbours; ++k)                              // pfo k+1 -> output slot k
-    out.push_back({neighbourOfPfo[k].first, neighbourOfPfo[k].second,
-                   1.f / (1.f + std::exp(-logits[k]))});             // sigmoid
+  for (int k = 0; k < nNeighbours; ++k) // pfo k+1 -> output slot k
+    out.push_back({neighbourOfPfo[k].first, neighbourOfPfo[k].second, 1.f / (1.f + std::exp(-logits[k]))}); // sigmoid
   return true;
 }
 
@@ -213,13 +211,11 @@ bool SatelliteAssignmentOnnxAlgorithm::ComputeNeighbourAffinities(
 // Snapshot every cluster in the current list into a ClusterInfo (hits, centroid, track state).
 // Clusters BuildInfo rejects (no usable hits / degenerate centroid) are dropped.
 
-pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::BuildClusterCache(
-    std::vector<ClusterInfo> &clusters) const {
-  const ClusterList *pClusterList = nullptr;
-  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
-      PandoraContentApi::GetCurrentList(*this, pClusterList));
+pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::BuildClusterCache(std::vector<ClusterInfo>& clusters) const {
+  const ClusterList* pClusterList = nullptr;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pClusterList));
 
-  for (const Cluster *const pCluster : *pClusterList) {
+  for (const Cluster* const pCluster : *pClusterList) {
     ClusterInfo info;
     if (this->BuildInfo(pCluster, info))
       clusters.push_back(std::move(info));
@@ -232,14 +228,12 @@ pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::BuildClusterCache(
 // trackless, and not already flagged a photon.  A cluster with a calo-reaching track is a charged
 // primary (a target, never a candidate); photons are handled by the upstream photon-ID chain.
 
-void SatelliteAssignmentOnnxAlgorithm::CollectCandidates(
-    const std::vector<ClusterInfo> &clusters, std::vector<int> &candidates) const {
+void SatelliteAssignmentOnnxAlgorithm::CollectCandidates(const std::vector<ClusterInfo>& clusters,
+                                                         std::vector<int>& candidates) const {
   for (int i = 0; i < static_cast<int>(clusters.size()); ++i) {
-    const Cluster *const pCluster = clusters[i].pCluster;
+    const Cluster* const pCluster = clusters[i].pCluster;
 
-    const bool isCandidate = pCluster->IsAvailable() &&
-                             !clusters[i].hasTrack &&
-                             (PHOTON != pCluster->GetParticleId());
+    const bool isCandidate = pCluster->IsAvailable() && !clusters[i].hasTrack && (PHOTON != pCluster->GetParticleId());
     if (isCandidate)
       candidates.push_back(i);
   }
@@ -251,25 +245,25 @@ void SatelliteAssignmentOnnxAlgorithm::CollectCandidates(
 // (they are the neutral pass's business).  Nothing is applied yet -- we only record child -> parent.
 
 void SatelliteAssignmentOnnxAlgorithm::PlanChargedMerges(
-    const std::vector<ClusterInfo> &clusters, const std::vector<int> &candidates,
-    const std::map<int, std::vector<NeighbourAff>> &affinities,
-    std::map<const Cluster *, const Cluster *> &chargedMerges) const {
+    const std::vector<ClusterInfo>& clusters, const std::vector<int>& candidates,
+    const std::map<int, std::vector<NeighbourAff>>& affinities,
+    std::map<const Cluster*, const Cluster*>& chargedMerges) const {
   for (const int i : candidates) {
     const auto iter = affinities.find(i);
-    if (iter == affinities.end())                          // inference failed / no neighbour -> keep neutral
+    if (iter == affinities.end()) // inference failed / no neighbour -> keep neutral
       continue;
 
     // Highest-affinity tracked neighbour.
-    const Cluster *pBestParent = nullptr;
+    const Cluster* pBestParent = nullptr;
     float bestAffinity = -1.f;
-    for (const NeighbourAff &n : iter->second) {
+    for (const NeighbourAff& n : iter->second) {
       if (n.hasTrack && n.affinity > bestAffinity) {
         bestAffinity = n.affinity;
-        pBestParent  = n.pCluster;
+        pBestParent = n.pCluster;
       }
     }
 
-    const Cluster *const pCandidate = clusters[i].pCluster;
+    const Cluster* const pCandidate = clusters[i].pCluster;
     if (bestAffinity > m_affinityThreshold && pBestParent && pBestParent != pCandidate)
       chargedMerges[pCandidate] = pBestParent;
   }
@@ -282,20 +276,19 @@ void SatelliteAssignmentOnnxAlgorithm::PlanChargedMerges(
 // emitted with its biggest cluster first, so ApplyNeutralGroups merges the rest into it.
 
 void SatelliteAssignmentOnnxAlgorithm::PlanNeutralGroups(
-    const std::vector<ClusterInfo> &clusters, const std::vector<int> &candidates,
-    const std::map<int, std::vector<NeighbourAff>> &affinities,
-    const std::set<const Cluster *> &becameCharged,
-    std::vector<std::vector<const Cluster *>> &neutralGroups) const {
+    const std::vector<ClusterInfo>& clusters, const std::vector<int>& candidates,
+    const std::map<int, std::vector<NeighbourAff>>& affinities, const std::set<const Cluster*>& becameCharged,
+    std::vector<std::vector<const Cluster*>>& neutralGroups) const {
   // Seed the disjoint-set with the surviving neutral clusters (each its own parent).
-  std::map<const Cluster *, const Cluster *> parent;
+  std::map<const Cluster*, const Cluster*> parent;
   for (const int i : candidates) {
-    const Cluster *const pCluster = clusters[i].pCluster;
+    const Cluster* const pCluster = clusters[i].pCluster;
     if (!becameCharged.count(pCluster))
       parent[pCluster] = pCluster;
   }
 
   // Disjoint-set find with path-halving (only ever called on keys present in `parent`).
-  auto find = [&parent](const Cluster *x) {
+  auto find = [&parent](const Cluster* x) {
     while (parent[x] != x) {
       parent[x] = parent[parent[x]];
       x = parent[x];
@@ -305,15 +298,15 @@ void SatelliteAssignmentOnnxAlgorithm::PlanNeutralGroups(
 
   // Union each surviving candidate with its neutral neighbours whose affinity clears the threshold.
   for (const int i : candidates) {
-    const Cluster *const pCandidate = clusters[i].pCluster;
-    if (!parent.count(pCandidate))                         // candidate went charged -> not in the set
+    const Cluster* const pCandidate = clusters[i].pCluster;
+    if (!parent.count(pCandidate)) // candidate went charged -> not in the set
       continue;
 
     const auto iter = affinities.find(i);
     if (iter == affinities.end())
       continue;
 
-    for (const NeighbourAff &n : iter->second) {
+    for (const NeighbourAff& n : iter->second) {
       const bool isNeutralSurvivor = !n.hasTrack && parent.count(n.pCluster);
       if (isNeutralSurvivor && n.affinity > m_neutralAffinityThreshold)
         parent[find(pCandidate)] = find(n.pCluster);
@@ -321,15 +314,13 @@ void SatelliteAssignmentOnnxAlgorithm::PlanNeutralGroups(
   }
 
   // Collect components; keep only real groups (>= 2 members) and put the biggest cluster first.
-  std::map<const Cluster *, std::vector<const Cluster *>> components;
-  for (const auto &entry : parent)
+  std::map<const Cluster*, std::vector<const Cluster*>> components;
+  for (const auto& entry : parent)
     components[find(entry.first)].push_back(entry.first);
 
-  const auto energy = [](const Cluster *c) {
-    return c->GetHadronicEnergy() + c->GetElectromagneticEnergy();
-  };
-  for (auto &entry : components) {
-    std::vector<const Cluster *> &members = entry.second;
+  const auto energy = [](const Cluster* c) { return c->GetHadronicEnergy() + c->GetElectromagneticEnergy(); };
+  for (auto& entry : components) {
+    std::vector<const Cluster*>& members = entry.second;
     if (members.size() < 2)
       continue;
 
@@ -338,7 +329,7 @@ void SatelliteAssignmentOnnxAlgorithm::PlanNeutralGroups(
       if (energy(members[k]) > energy(members[repIdx]))
         repIdx = k;
 
-    std::swap(members[0], members[repIdx]);               // representative = biggest, merged INTO
+    std::swap(members[0], members[repIdx]); // representative = biggest, merged INTO
     neutralGroups.push_back(members);
   }
 }
@@ -347,15 +338,15 @@ void SatelliteAssignmentOnnxAlgorithm::PlanNeutralGroups(
 // Execute the planned charged merges.  The parent is a tracked cluster (never itself a merge child),
 // so it cannot be stale here; a null/unavailable parent is skipped defensively.
 
-pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::ApplyChargedMerges(
-    const std::map<const Cluster *, const Cluster *> &merges) const {
-  for (const auto &childParent : merges) {
-    const Cluster *const pParent = childParent.second;
+pandora::StatusCode
+SatelliteAssignmentOnnxAlgorithm::ApplyChargedMerges(const std::map<const Cluster*, const Cluster*>& merges) const {
+  for (const auto& childParent : merges) {
+    const Cluster* const pParent = childParent.second;
     if (!pParent || !pParent->IsAvailable())
       continue;
 
     PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
-        PandoraContentApi::MergeAndDeleteClusters(*this, pParent, childParent.first));
+                             PandoraContentApi::MergeAndDeleteClusters(*this, pParent, childParent.first));
   }
   return STATUS_CODE_SUCCESS;
 }
@@ -365,17 +356,16 @@ pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::ApplyChargedMerges(
 // (members[0]).  Groups are disjoint, so no member is ever touched twice and the representative is
 // never deleted.
 
-pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::ApplyNeutralGroups(
-    const std::vector<std::vector<const Cluster *>> &groups) const {
-  for (const std::vector<const Cluster *> &members : groups) {
-    const Cluster *const pRep = members.front();
+pandora::StatusCode
+SatelliteAssignmentOnnxAlgorithm::ApplyNeutralGroups(const std::vector<std::vector<const Cluster*>>& groups) const {
+  for (const std::vector<const Cluster*>& members : groups) {
+    const Cluster* const pRep = members.front();
 
-    for (const Cluster *const pChild : members) {
+    for (const Cluster* const pChild : members) {
       if (pChild == pRep)
         continue;
 
-      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
-          PandoraContentApi::MergeAndDeleteClusters(*this, pRep, pChild));
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::MergeAndDeleteClusters(*this, pRep, pChild));
     }
   }
   return STATUS_CODE_SUCCESS;
@@ -404,15 +394,15 @@ pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::Run() {
   }
 
   // Pass 1: plan the (frozen) charged merges; remember which candidates thereby became charged.
-  std::map<const Cluster *, const Cluster *> chargedMerges;
+  std::map<const Cluster*, const Cluster*> chargedMerges;
   this->PlanChargedMerges(clusters, candidates, affinities, chargedMerges);
 
-  std::set<const Cluster *> becameCharged;
-  for (const auto &childParent : chargedMerges)
+  std::set<const Cluster*> becameCharged;
+  for (const auto& childParent : chargedMerges)
     becameCharged.insert(childParent.first);
 
   // Pass 2: plan the neutral<->neutral grouping among the clusters that stayed neutral.
-  std::vector<std::vector<const Cluster *>> neutralGroups;
+  std::vector<std::vector<const Cluster*>> neutralGroups;
   if (m_groupNeutral)
     this->PlanNeutralGroups(clusters, candidates, affinities, becameCharged, neutralGroups);
 
@@ -427,21 +417,22 @@ pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::Run() {
 
 pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::ReadSettings(const pandora::TiXmlHandle xmlHandle) {
   PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
-      XmlHelper::ReadValue(xmlHandle, "ModelPath", m_modelPath));               // required
+                           XmlHelper::ReadValue(xmlHandle, "ModelPath", m_modelPath)); // required
 
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
-      XmlHelper::ReadValue(xmlHandle, "AffinityThreshold", m_affinityThreshold));
+                                  XmlHelper::ReadValue(xmlHandle, "AffinityThreshold", m_affinityThreshold));
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
-      XmlHelper::ReadValue(xmlHandle, "ConeHalfAngle", m_coneHalfAngle));
+                                  XmlHelper::ReadValue(xmlHandle, "ConeHalfAngle", m_coneHalfAngle));
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
-      XmlHelper::ReadValue(xmlHandle, "BudgetOwn", m_budgetOwn));
+                                  XmlHelper::ReadValue(xmlHandle, "BudgetOwn", m_budgetOwn));
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
-      XmlHelper::ReadValue(xmlHandle, "BudgetNeighbour", m_budgetNbr));
+                                  XmlHelper::ReadValue(xmlHandle, "BudgetNeighbour", m_budgetNbr));
 
   // 2nd pass: neutral<->neutral union-find grouping (defaults on / 0.72; see Grouping_Satellite_Findings.md)
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
-      XmlHelper::ReadValue(xmlHandle, "GroupNeutral", m_groupNeutral));
-  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "GroupNeutral", m_groupNeutral));
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
       XmlHelper::ReadValue(xmlHandle, "NeutralAffinityThreshold", m_neutralAffinityThreshold));
 
   m_coneCos = std::cos(m_coneHalfAngle);

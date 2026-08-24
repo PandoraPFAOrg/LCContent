@@ -27,12 +27,12 @@ public:
    *  @param  modelPath        path to the .onnx model file
    *  @param  intraOpThreads   ONNX Runtime intra-op thread count (default 1)
    */
-  explicit OnnxSession(const std::string &modelPath, int intraOpThreads = 1);
+  explicit OnnxSession(const std::string& modelPath, int intraOpThreads = 1);
 
   ~OnnxSession();
 
-  OnnxSession(const OnnxSession &) = delete;
-  OnnxSession &operator=(const OnnxSession &) = delete;
+  OnnxSession(const OnnxSession&) = delete;
+  OnnxSession& operator=(const OnnxSession&) = delete;
 
   /**
    *  @brief  Whether the model loaded successfully.
@@ -41,8 +41,8 @@ public:
 
   std::size_t InputCount() const;
   std::size_t OutputCount() const;
-  const std::vector<std::string> &InputNames() const;
-  const std::vector<std::string> &OutputNames() const;
+  const std::vector<std::string>& InputNames() const;
+  const std::vector<std::string>& OutputNames() const;
 
   /**
    *  @brief  The model's declared shape for input `index` (e.g. to validate a fixed token dimension).
@@ -59,7 +59,7 @@ public:
 
     std::vector<std::int64_t> shape;
     Type type = Type::Float;
-    const void *data = nullptr;
+    const void* data = nullptr;
   };
 
   /**
@@ -70,7 +70,7 @@ public:
    *
    *  @return one float vector per model output; empty on failure (which is logged)
    */
-  std::vector<std::vector<float>> Run(const std::vector<Input> &inputs) const;
+  std::vector<std::vector<float>> Run(const std::vector<Input>& inputs) const;
 
 private:
   struct Impl; ///< holds the Ort::Env / Session / MemoryInfo / I/O names
