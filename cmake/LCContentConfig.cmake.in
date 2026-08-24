@@ -25,6 +25,14 @@ if("@PANDORA_MONITORING@")
     find_dependency(PandoraMonitoring REQUIRED)
 endif()
 
+# ClusterNeutralPidAlgorithm exposes ONNX Runtime in its public ABI, so the
+# onnxruntime imported target must be available to consumers of LCContent.
+# (New packages ship onnxruntime-Config.cmake; older ones ship ONNXRuntime.)
+find_package(onnxruntime QUIET)
+if(NOT onnxruntime_FOUND)
+    find_package(ONNXRuntime QUIET)
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/LCContentTargets.cmake")
 
 check_required_components(LCContent)
