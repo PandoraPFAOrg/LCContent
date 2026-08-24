@@ -1,9 +1,9 @@
 #ifndef IdeaPfoCreationAlgorithm_h
 #define IdeaPfoCreationAlgorithm_h 1
 
-#include "Pandora/Algorithm.h"
 #include "Api/PandoraContentApi.h"
 #include "Helpers/XmlHelper.h"
+#include "Pandora/Algorithm.h"
 
 #include "Objects/Cluster.h"
 #include "Objects/Track.h"
@@ -13,7 +13,7 @@ namespace lc_content {
 class IdeaPfoCreationAlgorithm : public pandora::Algorithm {
 public:
   IdeaPfoCreationAlgorithm();
-  ~IdeaPfoCreationAlgorithm()=default;
+  ~IdeaPfoCreationAlgorithm() = default;
 
   class Factory : public pandora::AlgorithmFactory {
   public:
@@ -41,19 +41,19 @@ private:
 
   std::string m_outputPfoListName;
 
-  float m_nSigma         = 2.0f;   ///< Threshold in sigma units for the E_DR/p gate (validated optimum n=2)
-  float m_stochasticHad  = 0.30f;  ///< Hadronic stochastic term
-  float m_constantHad    = 0.01f;  ///< Hadronic constant term
-  float m_stochasticEm   = 0.02f;  ///< EM stochastic term
-  float m_constantEm     = 0.005f; ///< EM constant term
-  float m_ptCut          = 0.6f;
+  float m_nSigma = 2.0f;         ///< Threshold in sigma units for the E_DR/p gate (validated optimum n=2)
+  float m_stochasticHad = 0.30f; ///< Hadronic stochastic term
+  float m_constantHad = 0.01f;   ///< Hadronic constant term
+  float m_stochasticEm = 0.02f;  ///< EM stochastic term
+  float m_constantEm = 0.005f;   ///< EM constant term
+  float m_ptCut = 0.6f;
 
   // ---- regional-excess significance gate for the charged-hadron energy ----
-  float m_coneOpeningAngle = 0.4f;  ///< Regional cone opening angle [rad] for the E/p significance
-  float m_significanceK    = 2.0f;  ///< gate: emit iff  S = (sumEdr-sumP)/(sigma_c(sumEdr)*sumEdr) > k  (validated k=2)
+  float m_coneOpeningAngle = 0.4f; ///< Regional cone opening angle [rad] for the E/p significance
+  float m_significanceK = 2.0f;    ///< gate: emit iff  S = (sumEdr-sumP)/(sigma_c(sumEdr)*sumEdr) > k  (validated k=2)
 
   // non-configurable safe guard
-  float m_sigmaFloor     = 0.001f;  ///< Minimum sigma value
+  float m_sigmaFloor = 0.001f; ///< Minimum sigma value
 
   /// Flat hadronic-response calibration multiplying the E_DR neutral-hadron PFO energy
   /// (default 1.0 = no scaling).  XML "NeutralHadEnergyScale".

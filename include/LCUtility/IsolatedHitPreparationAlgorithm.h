@@ -1,8 +1,8 @@
 #ifndef IsolatedHitPreparationAlgorithm_h
 #define IsolatedHitPreparationAlgorithm_h 1
 
-#include "Pandora/Algorithm.h"
 #include "Helpers/XmlHelper.h"
+#include "Pandora/Algorithm.h"
 
 #include "Api/PandoraContentApi.h"
 #include "Objects/CaloHit.h"
@@ -19,15 +19,15 @@ public:
     pandora::Algorithm* CreateAlgorithm() const;
   };
 
-  IsolatedHitPreparationAlgorithm()=default;
+  IsolatedHitPreparationAlgorithm() = default;
 
 private:
   pandora::StatusCode Run() override {
     // retrieve clusters
-    const pandora::ClusterList *pClusterList = nullptr;
+    const pandora::ClusterList* pClusterList = nullptr;
     PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pClusterList));
     // retrieve calo hits
-    const pandora::CaloHitList *pCaloHitList = nullptr;
+    const pandora::CaloHitList* pCaloHitList = nullptr;
     PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetCurrentList(*this, pCaloHitList));
 
     // collect hits that are not clustered
@@ -52,15 +52,15 @@ private:
         // to your desired photon count.  A separate cherenkov cut is applied only when
         // CherEnergyThreshold > 0; otherwise the (scintillation) cut applies to all.
         const bool isCher = pHit->GetHitType() == pandora::DRC_CHEREN;
-        const float threshold = (isCher && m_cherEnergyThreshold > 0.f) ? m_cherEnergyThreshold
-                                                                        : m_scintEnergyThreshold;
+        const float threshold =
+            (isCher && m_cherEnergyThreshold > 0.f) ? m_cherEnergyThreshold : m_scintEnergyThreshold;
         if (pHit->GetInputEnergy() <= threshold)
           continue; // sub-threshold -> never flagged isolated -> not merged / not regressed
 
         PandoraContentApi::CaloHit::Metadata metadata;
         metadata.m_isIsolated = true;
         PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-            PandoraContentApi::CaloHit::AlterMetadata(*this, pHit, metadata));
+                                 PandoraContentApi::CaloHit::AlterMetadata(*this, pHit, metadata));
       }
     } // loop over calo hits
 
@@ -69,21 +69,23 @@ private:
 
   pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle) override {
     PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-        pandora::XmlHelper::ReadValue(xmlHandle, "ExcludeEcalHits", m_excludeEcal));
+                                    pandora::XmlHelper::ReadValue(xmlHandle, "ExcludeEcalHits", m_excludeEcal));
     PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-        pandora::XmlHelper::ReadValue(xmlHandle, "ExcludeHcalHits", m_excludeHcal));
-    PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+                                    pandora::XmlHelper::ReadValue(xmlHandle, "ExcludeHcalHits", m_excludeHcal));
+    PANDORA_RETURN_RESULT_IF_AND_IF(
+        pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
         pandora::XmlHelper::ReadValue(xmlHandle, "ScintEnergyThreshold", m_scintEnergyThreshold));
-    PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
+    PANDORA_RETURN_RESULT_IF_AND_IF(
+        pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
         pandora::XmlHelper::ReadValue(xmlHandle, "CherEnergyThreshold", m_cherEnergyThreshold));
 
     return pandora::STATUS_CODE_SUCCESS;
   } // ReadSettings
 
-  bool  m_excludeEcal = false;          ///< whether to exclude ECAL hits from isolated hit flagging (default: false)
-  bool  m_excludeHcal = false;          ///< whether to exclude HCAL hits from isolated hit flagging (default: false)
-  float m_scintEnergyThreshold = 0.f;   ///< energy cut (GeV) applied to scint hits (and cher if cher cut = 0)
-  float m_cherEnergyThreshold  = 0.f;   ///< if > 0, energy cut (GeV) applied to cherenkov hits instead
+  bool m_excludeEcal = false;         ///< whether to exclude ECAL hits from isolated hit flagging (default: false)
+  bool m_excludeHcal = false;         ///< whether to exclude HCAL hits from isolated hit flagging (default: false)
+  float m_scintEnergyThreshold = 0.f; ///< energy cut (GeV) applied to scint hits (and cher if cher cut = 0)
+  float m_cherEnergyThreshold = 0.f;  ///< if > 0, energy cut (GeV) applied to cherenkov hits instead
 };
 
 inline pandora::Algorithm* IsolatedHitPreparationAlgorithm::Factory::CreateAlgorithm() const {

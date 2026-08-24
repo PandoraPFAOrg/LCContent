@@ -21,7 +21,7 @@ struct OnnxSession::Impl {
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-OnnxSession::OnnxSession(const std::string &modelPath, const int intraOpThreads) : m_impl(new Impl()) {
+OnnxSession::OnnxSession(const std::string& modelPath, const int intraOpThreads) : m_impl(new Impl()) {
   try {
     Ort::SessionOptions options;
     options.SetIntraOpNumThreads(intraOpThreads);
@@ -34,7 +34,7 @@ OnnxSession::OnnxSession(const std::string &modelPath, const int intraOpThreads)
       m_impl->outputNames.emplace_back(m_impl->session->GetOutputNameAllocated(i, allocator).get());
 
     m_impl->valid = true;
-  } catch (const Ort::Exception &exception) {
+  } catch (const Ort::Exception& exception) {
     std::cout << "OnnxSession: failed to load '" << modelPath << "' (" << exception.what() << ")." << std::endl;
     m_impl->valid = false;
   }
@@ -52,9 +52,9 @@ std::size_t OnnxSession::InputCount() const { return m_impl->inputNames.size(); 
 
 std::size_t OnnxSession::OutputCount() const { return m_impl->outputNames.size(); }
 
-const std::vector<std::string> &OnnxSession::InputNames() const { return m_impl->inputNames; }
+const std::vector<std::string>& OnnxSession::InputNames() const { return m_impl->inputNames; }
 
-const std::vector<std::string> &OnnxSession::OutputNames() const { return m_impl->outputNames; }
+const std::vector<std::string>& OnnxSession::OutputNames() const { return m_impl->outputNames; }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -67,7 +67,7 @@ std::vector<std::int64_t> OnnxSession::InputShape(const std::size_t index) const
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-std::vector<std::vector<float>> OnnxSession::Run(const std::vector<Input> &inputs) const {
+std::vector<std::vector<float>> OnnxSession::Run(const std::vector<Input>& inputs) const {
   if (!m_impl->valid)
     return {};
 
@@ -75,47 +75,49 @@ std::vector<std::vector<float>> OnnxSession::Run(const std::vector<Input> &input
   // const_cast is safe (the caller owns const data for the duration of the call).
   std::vector<Ort::Value> ortInputs;
   ortInputs.reserve(inputs.size());
-  for (const Input &input : inputs) {
+  for (const Input& input : inputs) {
     std::size_t nElements = 1;
     for (const std::int64_t dim : input.shape)
       nElements *= static_cast<std::size_t>(dim);
 
     switch (input.type) {
     case Input::Type::Float:
-      ortInputs.emplace_back(Ort::Value::CreateTensor<float>(m_impl->mem, const_cast<float *>(static_cast<const float *>(input.data)),
+      ortInputs.emplace_back(Ort::Value::CreateTensor<float>(m_impl->mem,
+                                                             const_cast<float*>(static_cast<const float*>(input.data)),
                                                              nElements, input.shape.data(), input.shape.size()));
       break;
     case Input::Type::Int64:
-      ortInputs.emplace_back(
-          Ort::Value::CreateTensor<std::int64_t>(m_impl->mem, const_cast<std::int64_t *>(static_cast<const std::int64_t *>(input.data)),
-                                                 nElements, input.shape.data(), input.shape.size()));
+      ortInputs.emplace_back(Ort::Value::CreateTensor<std::int64_t>(
+          m_impl->mem, const_cast<std::int64_t*>(static_cast<const std::int64_t*>(input.data)), nElements,
+          input.shape.data(), input.shape.size()));
       break;
     case Input::Type::Bool:
-      ortInputs.emplace_back(Ort::Value::CreateTensor<bool>(m_impl->mem, const_cast<bool *>(static_cast<const bool *>(input.data)),
+      ortInputs.emplace_back(Ort::Value::CreateTensor<bool>(m_impl->mem,
+                                                            const_cast<bool*>(static_cast<const bool*>(input.data)),
                                                             nElements, input.shape.data(), input.shape.size()));
       break;
     }
   }
 
-  std::vector<const char *> inputNamesC, outputNamesC;
-  for (const std::string &name : m_impl->inputNames)
+  std::vector<const char*> inputNamesC, outputNamesC;
+  for (const std::string& name : m_impl->inputNames)
     inputNamesC.push_back(name.c_str());
-  for (const std::string &name : m_impl->outputNames)
+  for (const std::string& name : m_impl->outputNames)
     outputNamesC.push_back(name.c_str());
 
   try {
-    auto outputs = m_impl->session->Run(Ort::RunOptions{nullptr}, inputNamesC.data(), ortInputs.data(), ortInputs.size(),
-                                        outputNamesC.data(), outputNamesC.size());
+    auto outputs = m_impl->session->Run(Ort::RunOptions{nullptr}, inputNamesC.data(), ortInputs.data(),
+                                        ortInputs.size(), outputNamesC.data(), outputNamesC.size());
 
     std::vector<std::vector<float>> result;
     result.reserve(outputs.size());
-    for (Ort::Value &output : outputs) {
+    for (Ort::Value& output : outputs) {
       const std::size_t count = output.GetTensorTypeAndShapeInfo().GetElementCount();
-      const float *const data = output.GetTensorMutableData<float>();
+      const float* const data = output.GetTensorMutableData<float>();
       result.emplace_back(data, data + count);
     }
     return result;
-  } catch (const Ort::Exception &exception) {
+  } catch (const Ort::Exception& exception) {
     std::cout << "OnnxSession: inference failed (" << exception.what() << ")." << std::endl;
     return {};
   }

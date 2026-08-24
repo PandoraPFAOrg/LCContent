@@ -8,9 +8,9 @@ namespace lc_content {
 namespace VectorHelper {
   inline float deltaPhi(float phi1, float phi2) {
     float dphi = phi1 - phi2;
-    
+
     // wrap into [-pi, pi]
-    if (dphi >  static_cast<float>(M_PI))
+    if (dphi > static_cast<float>(M_PI))
       dphi -= 2.f * static_cast<float>(M_PI);
     if (dphi < -static_cast<float>(M_PI))
       dphi += 2.f * static_cast<float>(M_PI);
@@ -21,7 +21,7 @@ namespace VectorHelper {
     const float dt = t1 - t2;
     float dp = deltaPhi(p1, p2);
 
-    return dt*dt + dp*dp;
+    return dt * dt + dp * dp;
   } // AngularDR2
 
   inline float AngularDR(float t1, float p1, float t2, float p2) {

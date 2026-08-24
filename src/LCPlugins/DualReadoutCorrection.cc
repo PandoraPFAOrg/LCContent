@@ -1,18 +1,18 @@
 /**
  *  @file   LCContent/src/LCPlugins/DualReadoutCorrection.cc
- * 
+ *
  *  @brief  Implementation of the dual-readout correction plugin algorithm class.
  *
  *  $Log: $
  */
 
-#include "Pandora/AlgorithmHeaders.h"
 #include "LCPlugins/DualReadoutCorrection.h"
+#include "Pandora/AlgorithmHeaders.h"
 
 namespace lc_content {
 
-DualReadoutEnergy RunDualReadoutCorrection(const pandora::Cluster* const aClus,
-                                           const float chiEcal, const float chiHcal) {
+DualReadoutEnergy RunDualReadoutCorrection(const pandora::Cluster* const aClus, const float chiEcal,
+                                           const float chiHcal) {
   // initialize output struct
   DualReadoutEnergy out;
 
@@ -57,7 +57,8 @@ DualReadoutEnergy RunDualReadoutCorrection(const pandora::Cluster* const aClus,
   return out;
 } // RunDualReadoutCorrection
 
-pandora::StatusCode DualReadoutCorrection::MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const {
+pandora::StatusCode DualReadoutCorrection::MakeEnergyCorrections(const pandora::Cluster* const pCluster,
+                                                                 float& correctedEnergy) const {
   auto dualReadoutEnergy(RunDualReadoutCorrection(pCluster, m_chiEcal, m_chiHcal));
 
   // use the sum of corrected ECAL and HCAL energy as the corrected energy
@@ -67,11 +68,11 @@ pandora::StatusCode DualReadoutCorrection::MakeEnergyCorrections(const pandora::
 }
 
 pandora::StatusCode DualReadoutCorrection::ReadSettings(const pandora::TiXmlHandle xmlHandle) {
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "ChiEcal", m_chiEcal));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                           pandora::XmlHelper::ReadValue(xmlHandle, "ChiEcal", m_chiEcal));
 
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, pandora::XmlHelper::ReadValue(xmlHandle,
-      "ChiHcal", m_chiHcal));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                           pandora::XmlHelper::ReadValue(xmlHandle, "ChiHcal", m_chiHcal));
 
   if (m_chiEcal >= 1.f || m_chiHcal >= 1.f || m_chiEcal <= 0.f || m_chiHcal <= 0.f) {
     std::cerr << "DualReadoutCorrection::ReadSettings: ChiEcal and ChiHcal must be 0 < chi < 1";
