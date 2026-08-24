@@ -59,6 +59,17 @@ protected:
   pandora::StatusCode ReadCommonSettings(const pandora::TiXmlHandle xmlHandle);
 
   /**
+   *  @brief  The maximum number of passes over cluster contact information
+   *
+   *          Unbounded by default: an algorithm keeps going until a pass finds no pair worth merging. An
+   *          algorithm that instead caps the number of passes overrides this and owns the cap itself, so
+   *          that no algorithm acquires one it did not previously have.
+   *
+   *  @return the maximum number of passes
+   */
+  virtual unsigned int GetMaxPasses() const;
+
+  /**
    *  @brief  Get the clusters this algorithm considers, from the current cluster list
    *
    *          The order of the returned list is the order contact vectors are built in, and the merging
@@ -175,7 +186,6 @@ protected:
 
   ContactParameters m_contactParameters; ///< The cluster contact parameters
 
-  unsigned int m_nMaxPasses;          ///< Maximum number of passes over cluster contact information
   unsigned int m_minDaughterCaloHits; ///< Min number of calo hits in daughter candidate clusters
   float m_minDaughterHadronicEnergy;  ///< Min hadronic energy for daughter candidate clusters
   float m_contactCutMaxDistance;      ///< Max distance between closest hits to store cluster contact info
@@ -232,8 +242,14 @@ private:
 
 template <typename CONTACT>
 inline FragmentRemovalBaseAlgorithm<CONTACT>::FragmentRemovalBaseAlgorithm()
-    : m_contactParameters(), m_nMaxPasses(std::numeric_limits<unsigned int>::max()), m_minDaughterCaloHits(0),
-      m_minDaughterHadronicEnergy(0.f), m_contactCutMaxDistance(0.f) {}
+    : m_contactParameters(), m_minDaughterCaloHits(0), m_minDaughterHadronicEnergy(0.f), m_contactCutMaxDistance(0.f) {}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+template <typename CONTACT>
+inline unsigned int FragmentRemovalBaseAlgorithm<CONTACT>::GetMaxPasses() const {
+  return std::numeric_limits<unsigned int>::max();
+}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -287,7 +303,9 @@ pandora::StatusCode FragmentRemovalBaseAlgorithm<CONTACT>::Run() {
   // Bounding boxes and the record of which clusters each merge changed, both reused across passes.
   ClusterContactCache contactCache;
 
-  while ((nPasses++ < m_nMaxPasses) && shouldRecalculate) {
+  const unsigned int nMaxPasses(this->GetMaxPasses());
+
+  while ((nPasses++ < nMaxPasses) && shouldRecalculate) {
     shouldRecalculate = false;
     const pandora::Cluster *pBestParentCluster(NULL), *pBestDaughterCluster(NULL);
 

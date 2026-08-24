@@ -17,7 +17,7 @@ using namespace pandora;
 namespace lc_content {
 
 PhotonFragmentRemovalAlgorithm::PhotonFragmentRemovalAlgorithm()
-    : m_innerLayerTolerance(5), m_minCosOpeningAngle(0.95f), m_useOnlyPhotonLikeDaughters(true),
+    : m_nMaxPasses(200), m_innerLayerTolerance(5), m_minCosOpeningAngle(0.95f), m_useOnlyPhotonLikeDaughters(true),
       m_photonLikeMaxInnerLayer(10), m_photonLikeMinDCosR(0.5f), m_photonLikeMaxShowerStart(5.f),
       m_photonLikeMaxProfileDiscrepancy(0.75f), m_contactCutNLayers(2), m_contactCutConeFraction1(0.5f),
       m_contactCutCloseHitFraction1(0.5f), m_contactCutCloseHitFraction2(0.2f), m_contactEvidenceNLayers(2),
@@ -25,7 +25,6 @@ PhotonFragmentRemovalAlgorithm::PhotonFragmentRemovalAlgorithm()
       m_distanceEvidence1d(100.f), m_distanceEvidenceCloseFraction1Multiplier(1.f),
       m_distanceEvidenceCloseFraction2Multiplier(2.f), m_contactWeight(1.f), m_coneWeight(1.f), m_distanceWeight(1.f),
       m_minEvidence(2.f) {
-  m_nMaxPasses = 200;
   m_minDaughterCaloHits = 5;
   m_minDaughterHadronicEnergy = 0.025f;
   m_contactCutMaxDistance = 20.f;
@@ -36,6 +35,10 @@ PhotonFragmentRemovalAlgorithm::PhotonFragmentRemovalAlgorithm()
   m_contactParameters.m_minCosOpeningAngle = 0.95f;
   m_contactParameters.m_distanceThreshold = 2.f;
 }
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+unsigned int PhotonFragmentRemovalAlgorithm::GetMaxPasses() const { return m_nMaxPasses; }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 

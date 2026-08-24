@@ -28,6 +28,7 @@ private:
   pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
   // Hooks supplying what is specific to this algorithm; see FragmentRemovalBaseAlgorithm for what each is asked
+  unsigned int GetMaxPasses() const;
   bool IsCandidateDaughter(const pandora::Cluster* const pDaughterCluster) const;
   bool IsCandidateParent(const pandora::Cluster* const pDaughterCluster,
                          const pandora::Cluster* const pParentCluster) const;
@@ -61,6 +62,8 @@ private:
    *  @return the evidence
    */
   float GetEvidenceForMerge(const ClusterContact& clusterContact) const;
+
+  unsigned int m_nMaxPasses; ///< Maximum number of passes over cluster contact information
 
   unsigned int m_innerLayerTolerance; ///< Max number of layers by which daughter can exceed parent inner layer
   float m_minCosOpeningAngle;         ///< Min cos opening angle between candidate cluster initial directions
