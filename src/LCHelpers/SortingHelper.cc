@@ -83,4 +83,17 @@ bool SortingHelper::SortPfosByEnergy(const ParticleFlowObject* const pLhs, const
   return (pLhs->GetEnergy() > pRhs->GetEnergy());
 }
 
+bool SortingHelper::SortTracksByDistance(const pandora::Track* a,
+                                         const pandora::Track* b,
+                                         const pandora::Cluster* const pCluster)
+{
+    const auto& trkStateA = a->GetTrackStateAtCalorimeter();
+    const auto& trkStateB = b->GetTrackStateAtCalorimeter();
+    const auto& clusterPos = pCluster->GetCentroid( pCluster->GetInnerPseudoLayer() );
+    const double distA2 = (clusterPos - trkStateA.GetPosition()).GetMagnitudeSquared();
+    const double distB2 = (clusterPos - trkStateB.GetPosition()).GetMagnitudeSquared();
+
+    return distA2 < distB2;
+}
+
 } // namespace lc_content
