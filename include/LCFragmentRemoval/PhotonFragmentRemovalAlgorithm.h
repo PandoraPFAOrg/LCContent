@@ -8,7 +8,7 @@
 #ifndef LC_PHOTON_FRAGMENT_REMOVAL_ALGORITHM_H
 #define LC_PHOTON_FRAGMENT_REMOVAL_ALGORITHM_H 1
 
-#include "Pandora/Algorithm.h"
+#include "LCFragmentRemoval/FragmentRemovalBaseAlgorithm.h"
 
 #include "LCHelpers/FragmentRemovalHelper.h"
 
@@ -17,7 +17,7 @@ namespace lc_content {
 /**
  *  @brief  PhotonFragmentRemovalAlgorithm class
  */
-class PhotonFragmentRemovalAlgorithm : public pandora::Algorithm {
+class PhotonFragmentRemovalAlgorithm : public FragmentRemovalBaseAlgorithm<ClusterContact> {
 public:
   /**
    *  @brief Default constructor
@@ -25,20 +25,25 @@ public:
   PhotonFragmentRemovalAlgorithm();
 
 private:
-  pandora::StatusCode Run();
   pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
+  // Hooks supplying what is specific to this algorithm; see FragmentRemovalBaseAlgorithm for what each is asked
+  unsigned int GetMaxPasses() const;
+  bool IsCandidateDaughter(const pandora::Cluster* const pDaughterCluster) const;
+  bool IsCandidateParent(const pandora::Cluster* const pDaughterCluster,
+                         const pandora::Cluster* const pParentCluster) const;
+  bool PassesClusterContactCuts(const ClusterContact& clusterContact) const;
+
+  pandora::StatusCode GetClusterMergingCandidates(const ContactMap& clusterContactMap,
+                                                  const pandora::Cluster*& pBestParentCluster,
+                                                  const pandora::Cluster*& pBestDaughterCluster);
+
   /**
-   *  @brief  Get cluster contact map, linking each daughter candidate cluster to a list of parent candidates and
-   * describing the proximity/contact between each pairing
+   *  @brief  Relabel the enlarged parent cluster as a photon
    *
-   *  @param  isFirstPass whether this is the first call to GetClusterContactMap
-   *  @param  affectedClusters list of those clusters affected by previous cluster merging, for which contact details
-   * must be updated
-   *  @param  clusterContactMap to receive the populated cluster contact map
+   *  @param  pBestParentCluster address of the parent cluster of the merge just applied
    */
-  pandora::StatusCode GetClusterContactMap(bool& isFirstPass, const pandora::ClusterSet& affectedClusters,
-                                           ClusterContactMap& clusterContactMap) const;
+  pandora::StatusCode PostMergeAction(const pandora::Cluster* const pBestParentCluster);
 
   /**
    *  @brief  Whether candidate daughter cluster can be considered as photon-like
@@ -50,27 +55,6 @@ private:
   bool IsPhotonLike(const pandora::Cluster* const pDaughterCluster) const;
 
   /**
-   *  @brief  Whether candidate parent and daughter clusters are sufficiently in contact to warrant further
-   * investigation
-   *
-   *  @param  clusterContact the cluster contact
-   *
-   *  @return boolean
-   */
-  bool PassesClusterContactCuts(const ClusterContact& clusterContact) const;
-
-  /**
-   *  @brief  Find the best candidate parent and daughter clusters for fragment removal merging
-   *
-   *  @param  clusterContactMap the populated cluster contact map
-   *  @param  pBestParentCluster to receive the address of the best parent cluster candidate
-   *  @param  pBestDaughterCluster to receive the address of the best daughter cluster candidate
-   */
-  pandora::StatusCode GetClusterMergingCandidates(const ClusterContactMap& clusterContactMap,
-                                                  const pandora::Cluster*& pBestParentCluster,
-                                                  const pandora::Cluster*& pBestDaughterCluster) const;
-
-  /**
    *  @brief  Get a measure of the evidence for merging the parent and daughter candidate clusters
    *
    *  @param  clusterContact the cluster contact details for parent/daughter candidate merge
@@ -79,27 +63,8 @@ private:
    */
   float GetEvidenceForMerge(const ClusterContact& clusterContact) const;
 
-  /**
-   *  @brief  Get the list of clusters for which cluster contact information will be affected by a specified cluster
-   * merge
-   *
-   *  @param  clusterContactMap the cluster contact map
-   *  @param  pBestParentCluster address of the parent cluster to be merged
-   *  @param  pBestDaughterCluster address of the daughter cluster to be merged
-   *  @param  affectedClusters to receive the list of affected clusters
-   */
-  pandora::StatusCode GetAffectedClusters(const ClusterContactMap& clusterContactMap,
-                                          const pandora::Cluster* const pBestParentCluster,
-                                          const pandora::Cluster* const pBestDaughterCluster,
-                                          pandora::ClusterSet& affectedClusters) const;
-
-  typedef ClusterContact::Parameters ContactParameters;
-  ContactParameters m_contactParameters; ///< The cluster contact parameters
-
   unsigned int m_nMaxPasses; ///< Maximum number of passes over cluster contact information
 
-  unsigned int m_minDaughterCaloHits; ///< Min number of calo hits in daughter candidate clusters
-  float m_minDaughterHadronicEnergy;  ///< Min hadronic energy for daughter candidate clusters
   unsigned int m_innerLayerTolerance; ///< Max number of layers by which daughter can exceed parent inner layer
   float m_minCosOpeningAngle;         ///< Min cos opening angle between candidate cluster initial directions
 
@@ -110,7 +75,6 @@ private:
   float m_photonLikeMaxShowerStart;        ///< Max shower profile start to identify daughter as photon-like
   float m_photonLikeMaxProfileDiscrepancy; ///< Max shower profile discrepancy to identify daughter as photon-like
 
-  float m_contactCutMaxDistance;       ///< Max distance between closest hits to store cluster contact info
   unsigned int m_contactCutNLayers;    ///< Number of contact layers to store cluster contact info
   float m_contactCutConeFraction1;     ///< Cone fraction 1 value to store cluster contact info
   float m_contactCutCloseHitFraction1; ///< Close hit fraction 1 value to store cluster contact info

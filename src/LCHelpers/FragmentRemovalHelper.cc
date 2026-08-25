@@ -8,6 +8,7 @@
 
 #include "Pandora/AlgorithmHeaders.h"
 
+#include "LCHelpers/ClusterProximityHelper.h"
 #include "LCHelpers/FragmentRemovalHelper.h"
 
 using namespace pandora;
@@ -373,7 +374,8 @@ CartesianVector FragmentRemovalHelper::GetEMEnergyWeightedPosition(const Cluster
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 ClusterContact::ClusterContact(const Pandora& pandora, const Cluster* const pDaughterCluster,
-                               const Cluster* const pParentCluster, const Parameters& parameters)
+                               const Cluster* const pParentCluster, const Parameters& parameters,
+                               ClusterContactCache& contactCache)
     : m_pDaughterCluster(pDaughterCluster), m_pParentCluster(pParentCluster), m_nContactLayers(0),
       m_contactFraction(0.f), m_coneFraction1(FragmentRemovalHelper::GetFractionOfHitsInCone(
                                   pandora, pDaughterCluster, pParentCluster, parameters.m_coneCosineHalfAngle1)),
@@ -381,21 +383,29 @@ ClusterContact::ClusterContact(const Pandora& pandora, const Cluster* const pDau
   (void)FragmentRemovalHelper::GetClusterContactDetails(
       pDaughterCluster, pParentCluster, parameters.m_distanceThreshold, m_nContactLayers, m_contactFraction);
 
-  this->HitDistanceComparison(pDaughterCluster, pParentCluster, parameters);
+  this->HitDistanceComparison(pDaughterCluster, pParentCluster, parameters, contactCache);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+bool ClusterContact::PassesDirectionPreselection(const Cluster* const pDaughterCluster,
+                                                 const Cluster* const pParentCluster, const Parameters& parameters) {
+  const float cosOpeningAngle(
+      pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()));
+
+  // Written as a negated rejection, and not as >=, so that the two callers keep exactly the behaviour the
+  // single inline test they replace had.
+  return !(cosOpeningAngle < parameters.m_minCosOpeningAngle);
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
 void ClusterContact::HitDistanceComparison(const Cluster* const pDaughterCluster, const Cluster* const pParentCluster,
-                                           const Parameters& parameters) {
+                                           const Parameters& parameters, ClusterContactCache& contactCache) {
   const float closeHitDistance1Squared(parameters.m_closeHitDistance1 * parameters.m_closeHitDistance1);
   const float closeHitDistance2Squared(parameters.m_closeHitDistance2 * parameters.m_closeHitDistance2);
 
   // Apply simple preselection using cosine of opening angle between the clusters
-  const float cosOpeningAngle(
-      pDaughterCluster->GetInitialDirection().GetCosOpeningAngle(pParentCluster->GetInitialDirection()));
-
-  if (cosOpeningAngle < parameters.m_minCosOpeningAngle)
+  if (!ClusterContact::PassesDirectionPreselection(pDaughterCluster, pParentCluster, parameters))
     return;
 
   // Calculate all hit distance properties in a single loop, for efficiency
@@ -405,20 +415,41 @@ void ClusterContact::HitDistanceComparison(const Cluster* const pDaughterCluster
   const OrderedCaloHitList& orderedCaloHitListI(pDaughterCluster->GetOrderedCaloHitList());
   const OrderedCaloHitList& orderedCaloHitListJ(pParentCluster->GetOrderedCaloHitList());
 
+  // The parent's hits are already grouped by pseudo layer, and a pseudo layer is a thin shell, so the box
+  // enclosing one bounds them far more tightly than a box around the whole cluster. A layer whose box is
+  // further from a daughter hit than both the running minimum and the wider close-hit distance cannot
+  // lower the minimum or set either flag, so skipping it reaches the same answer its hit loop would have.
+  // That matters most for the long, many-layered clusters whose pairs cost the most. The boxes depend on
+  // the parent alone, and a parent is paired with many daughters, so they come from the cache.
+  const ClusterLayerBoundingBoxVector& layerBoundingBoxesJ(contactCache.GetLayerBoundingBoxes(pParentCluster));
+
+  // One box per occupied parent layer, or the two cannot be walked together below. The cache drops a
+  // cluster's boxes whenever a merge changes its hits, so this holds unless that bookkeeping has failed.
+  if (layerBoundingBoxesJ.size() != orderedCaloHitListJ.size())
+    throw StatusCodeException(STATUS_CODE_FAILURE);
+
+  const float closeHitDistanceSquared(std::max(closeHitDistance1Squared, closeHitDistance2Squared));
+
   // Loop over hits in daughter cluster
-  for (OrderedCaloHitList::const_iterator iterI = orderedCaloHitListI.begin(), iterIEnd = orderedCaloHitListI.end();
-       iterI != iterIEnd; ++iterI) {
-    for (CaloHitList::const_iterator hitIterI = iterI->second->begin(), hitIterIEnd = iterI->second->end();
-         hitIterI != hitIterIEnd; ++hitIterI) {
+  for (const auto& layerEntryI : orderedCaloHitListI) {
+    for (const CaloHit* const pCaloHitI : *(layerEntryI.second)) {
       bool isCloseHit1(false), isCloseHit2(false);
-      const CartesianVector& positionVectorI((*hitIterI)->GetPositionVector());
+      const CartesianVector& positionVectorI(pCaloHitI->GetPositionVector());
+
+      // GetLayerBoundingBoxes built its vector by walking this same ordered calo hit list, so advancing
+      // the two together is what pairs each parent layer with its own box.
+      auto boxIterJ(layerBoundingBoxesJ.begin());
 
       // Compare each hit in daughter cluster with those in parent cluster
-      for (OrderedCaloHitList::const_iterator iterJ = orderedCaloHitListJ.begin(), iterJEnd = orderedCaloHitListJ.end();
-           iterJ != iterJEnd; ++iterJ) {
-        for (CaloHitList::const_iterator hitIterJ = iterJ->second->begin(), hitIterJEnd = iterJ->second->end();
-             hitIterJ != hitIterJEnd; ++hitIterJ) {
-          const float distanceSquared(positionVectorI.GetDistanceSquared((*hitIterJ)->GetPositionVector()));
+      for (const auto& layerEntryJ : orderedCaloHitListJ) {
+        const ClusterBoundingBox& layerBoundingBoxJ(*boxIterJ++);
+
+        if (layerBoundingBoxJ.IsSeparatedFromSquared(positionVectorI,
+                                                     std::max(minDistanceSquared, closeHitDistanceSquared)))
+          continue;
+
+        for (const CaloHit* const pCaloHitJ : *(layerEntryJ.second)) {
+          const float distanceSquared(positionVectorI.GetDistanceSquared(pCaloHitJ->GetPositionVector()));
 
           if (!isCloseHit1 && (distanceSquared < closeHitDistance1Squared))
             isCloseHit1 = true;

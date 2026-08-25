@@ -8,8 +8,9 @@
 #ifndef LC_MAIN_FRAGMENT_REMOVAL_ALGORITHM_H
 #define LC_MAIN_FRAGMENT_REMOVAL_ALGORITHM_H 1
 
-#include "Pandora/Algorithm.h"
+#include "LCFragmentRemoval/FragmentRemovalBaseAlgorithm.h"
 
+#include "LCHelpers/ClusterProximityHelper.h"
 #include "LCHelpers/FragmentRemovalHelper.h"
 
 #include <map>
@@ -44,9 +45,11 @@ public:
    *  @param  pDaughterCluster address of the daughter candidate cluster
    *  @param  pParentCluster address of the parent candidate cluster
    *  @param  parameters the cluster contact parameters
+   *  @param  contactCache cache of the per-cluster bounding boxes the hit comparison uses
    */
   ChargedClusterContact(const pandora::Pandora& pandora, const pandora::Cluster* const pDaughterCluster,
-                        const pandora::Cluster* const pParentCluster, const Parameters& parameters);
+                        const pandora::Cluster* const pParentCluster, const Parameters& parameters,
+                        ClusterContactCache& contactCache);
 
   /**
    *  @brief  Get the sum of energies of tracks associated with parent cluster
@@ -103,16 +106,13 @@ private:
                                   ///< tracks
 };
 
-typedef std::vector<ChargedClusterContact> ChargedClusterContactVector;
-typedef std::map<const pandora::Cluster*, ChargedClusterContactVector> ChargedClusterContactMap;
-
 //------------------------------------------------------------------------------------------------------------------------------------------
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 /**
  *  @brief  MainFragmentRemovalAlgorithm class
  */
-class MainFragmentRemovalAlgorithm : public pandora::Algorithm {
+class MainFragmentRemovalAlgorithm : public FragmentRemovalBaseAlgorithm<ChargedClusterContact> {
 public:
   /**
    *  @brief Default constructor
@@ -120,29 +120,21 @@ public:
   MainFragmentRemovalAlgorithm();
 
 private:
-  pandora::StatusCode Run();
   pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-  /**
-   *  @brief  Get cluster contact map, linking each daughter candidate cluster to a list of parent candidates and
-   * describing the proximity/contact between each pairing
-   *
-   *  @param  isFirstPass whether this is the first call to GetChargedClusterContactMap
-   *  @param  affectedClusters list of those clusters affected by previous cluster merging, for which contact details
-   * must be updated
-   *  @param  chargedClusterContactMap to receive the populated cluster contact map
-   */
-  pandora::StatusCode GetChargedClusterContactMap(bool& isFirstPass, const pandora::ClusterSet& affectedClusters,
-                                                  ChargedClusterContactMap& chargedClusterContactMap) const;
+  // Hooks supplying what is specific to this algorithm; see FragmentRemovalBaseAlgorithm for what each is asked
 
   /**
-   *  @brief  Whether candidate parent and daughter clusters are sufficiently in contact to warrant further
-   * investigation
+   *  @brief  Get the current cluster list with the muon and electron candidates removed
    *
-   *  @param  chargedClusterContact the cluster contact
-   *
-   *  @return boolean
+   *  @param  inputClusterList the current cluster list
+   *  @param  clusterList to receive the clusters to consider
    */
+  void GetRelevantClusterList(const pandora::ClusterList& inputClusterList, pandora::ClusterList& clusterList) const;
+
+  bool IsCandidateDaughter(const pandora::Cluster* const pDaughterCluster) const;
+  bool IsCandidateParent(const pandora::Cluster* const pDaughterCluster,
+                         const pandora::Cluster* const pParentCluster) const;
   bool PassesClusterContactCuts(const ChargedClusterContact& chargedClusterContact) const;
 
   /**
@@ -152,7 +144,7 @@ private:
    *  @param  pBestParentCluster to receive the address of the best parent cluster candidate
    *  @param  pBestDaughterCluster to receive the address of the best daughter cluster candidate
    */
-  pandora::StatusCode GetClusterMergingCandidates(const ChargedClusterContactMap& chargedClusterContactMap,
+  pandora::StatusCode GetClusterMergingCandidates(const ContactMap& chargedClusterContactMap,
                                                   const pandora::Cluster*& pBestParentCluster,
                                                   const pandora::Cluster*& pBestDaughterCluster);
 
@@ -167,7 +159,7 @@ private:
    *  @return boolean
    */
   bool PassesPreselection(const pandora::Cluster* const pDaughterCluster,
-                          const ChargedClusterContactVector& chargedClusterContactVector, float& globalDeltaChi2) const;
+                          const ContactVector& chargedClusterContactVector, float& globalDeltaChi2) const;
 
   /**
    *  @brief  Get a measure of the total evidence for merging the parent and daughter candidate clusters
@@ -204,27 +196,6 @@ private:
    */
   unsigned int GetClusterCorrectionLayer(const pandora::Cluster* const pDaughterCluster) const;
 
-  /**
-   *  @brief  Get the list of clusters for which cluster contact information will be affected by a specified cluster
-   * merge
-   *
-   *  @param  chargedClusterContactMap the cluster contact map
-   *  @param  pBestParentCluster address of the parent cluster to be merged
-   *  @param  pBestDaughterCluster address of the daughter cluster to be merged
-   *  @param  affectedClusters to receive the list of affected clusters
-   */
-  pandora::StatusCode GetAffectedClusters(const ChargedClusterContactMap& chargedClusterContactMap,
-                                          const pandora::Cluster* const pBestParentCluster,
-                                          const pandora::Cluster* const pBestDaughterCluster,
-                                          pandora::ClusterSet& affectedClusters) const;
-
-  typedef ChargedClusterContact::Parameters ContactParameters;
-  ContactParameters m_contactParameters; ///< The charged cluster contact parameters
-
-  unsigned int m_minDaughterCaloHits; ///< Min number of calo hits in daughter candidate clusters
-  float m_minDaughterHadronicEnergy;  ///< Min hadronic energy for daughter candidate clusters
-
-  float m_contactCutMaxDistance;                  ///< Max distance between closest hits to store cluster contact info
   unsigned int m_contactCutNLayers;               ///< Number of contact layers to store cluster contact info
   float m_contactCutConeFraction1;                ///< Cone fraction 1 value to store cluster contact info
   float m_contactCutCloseHitFraction1;            ///< Close hit fraction 1 value to store cluster contact info

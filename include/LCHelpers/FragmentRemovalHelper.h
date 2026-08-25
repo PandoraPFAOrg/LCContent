@@ -11,6 +11,8 @@
 #include "Pandora/PandoraInternal.h"
 #include "Pandora/StatusCodes.h"
 
+#include "LCHelpers/ClusterProximityHelper.h"
+
 namespace lc_content {
 
 /**
@@ -38,9 +40,28 @@ public:
    *  @param  pDaughterCluster address of the daughter candidate cluster
    *  @param  pParentCluster address of the parent candidate cluster
    *  @param  parameters the cluster contact parameters
+   *  @param  contactCache cache of the per-cluster bounding boxes the hit comparison uses
    */
   ClusterContact(const pandora::Pandora& pandora, const pandora::Cluster* const pDaughterCluster,
-                 const pandora::Cluster* const pParentCluster, const Parameters& parameters);
+                 const pandora::Cluster* const pParentCluster, const Parameters& parameters,
+                 ClusterContactCache& contactCache);
+
+  /**
+   *  @brief  Whether the initial directions of two clusters are close enough to warrant comparing their hits
+   *
+   *          A pair that fails this gets no hit comparison at all, so the contact reports its closest hit
+   *          separation as float max. A caller that would rather not build the contact in the first place
+   *          can ask here instead, and is guaranteed the same answer because this is the test the
+   *          constructor itself applies.
+   *
+   *  @param  pDaughterCluster address of the daughter candidate cluster
+   *  @param  pParentCluster address of the parent candidate cluster
+   *  @param  parameters the cluster contact parameters
+   *
+   *  @return boolean
+   */
+  static bool PassesDirectionPreselection(const pandora::Cluster* const pDaughterCluster,
+                                          const pandora::Cluster* const pParentCluster, const Parameters& parameters);
 
   /**
    *  @brief  Get the address of the daughter candidate cluster
@@ -106,9 +127,11 @@ protected:
    *  @param  pDaughterCluster address of the daughter candidate cluster
    *  @param  pParentCluster address of the parent candidate cluster
    *  @param  parameters the cluster contact parameters
+   *  @param  contactCache cache of the per-cluster bounding boxes
    */
   void HitDistanceComparison(const pandora::Cluster* const pDaughterCluster,
-                             const pandora::Cluster* const pParentCluster, const Parameters& parameters);
+                             const pandora::Cluster* const pParentCluster, const Parameters& parameters,
+                             ClusterContactCache& contactCache);
 
   const pandora::Cluster* m_pDaughterCluster; ///< Address of the daughter candidate cluster
   const pandora::Cluster* m_pParentCluster;   ///< Address of the parent candidate cluster
@@ -120,9 +143,6 @@ protected:
   float m_closeHitFraction2;     ///< Fraction of daughter hits that lie within sepcified distance 2 of parent cluster
   float m_distanceToClosestHit;  ///< Distance between closest hits in parent and daughter clusters, units mm
 };
-
-typedef std::vector<ClusterContact> ClusterContactVector;
-typedef std::map<const pandora::Cluster*, ClusterContactVector> ClusterContactMap;
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
