@@ -12,11 +12,12 @@
 
 #include <utility>
 
-namespace lc_content
-{
+namespace lc_content {
 
-template<typename, unsigned int> class KDTreeLinkerAlgo;
-template<typename, unsigned int> class KDTreeNodeInfoT;
+template <typename, unsigned int>
+class KDTreeLinkerAlgo;
+template <typename, unsigned int>
+class KDTreeNodeInfoT;
 
 /**
  *  @brief  BIBHitMergingAlgorithm class
@@ -35,35 +36,41 @@ template<typename, unsigned int> class KDTreeNodeInfoT;
  *  time to be within MaxTimeDifference of the host cluster's energy-weighted mean hit
  *  time. Intended to run after track-cluster association, so track matches are known.
  */
-class BIBHitMergingAlgorithm : public pandora::Algorithm
-{
+class BIBHitMergingAlgorithm : public pandora::Algorithm {
 public:
-    typedef KDTreeLinkerAlgo<std::pair<const pandora::CaloHit*, unsigned int>, 3> HitKDTree3D;
-    typedef KDTreeNodeInfoT<std::pair<const pandora::CaloHit*, unsigned int>, 3> HitKDNode3D;
+  typedef KDTreeLinkerAlgo<std::pair<const pandora::CaloHit*, unsigned int>, 3> HitKDTree3D;
+  typedef KDTreeNodeInfoT<std::pair<const pandora::CaloHit*, unsigned int>, 3> HitKDNode3D;
 
-    /**
-     *  @brief Default constructor
-     */
-    BIBHitMergingAlgorithm();
+  /**
+   *  @brief Default constructor
+   */
+  BIBHitMergingAlgorithm();
 
 private:
-    pandora::StatusCode Run();
-    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+  pandora::StatusCode Run();
+  pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-    bool                    m_shouldUseCurrentClusterList;  ///< Whether to use clusters from the current list in the algorithm
-    pandora::StringVector   m_additionalClusterListNames;   ///< Additional cluster lists from which to consider clusters
+  bool m_shouldUseCurrentClusterList; ///< Whether to use clusters from the current list in the algorithm
+  pandora::StringVector m_additionalClusterListNames; ///< Additional cluster lists from which to consider clusters
 
-    float                   m_minHostClusterEnergy;         ///< Host eligibility: min cluster hadronic energy for clusters without an associated track, units GeV
-    float                   m_maxRecombinationDistance;     ///< Max distance between the hit and the nearest non-isolated member hit of the host, units mm
-    unsigned int            m_minClusterNeighbours;         ///< Min number of the hit's cylinder neighbours that must belong to the host cluster
-    unsigned int            m_neighbourNLayers;             ///< Pseudolayer window of the neighbour cylinder (same convention as the flag definition)
-    float                   m_neighbourCutDistanceSquared;  ///< Transverse distance of the neighbour cylinder, stored squared, units mm^2 (XML value NeighbourCutDistance is in mm)
-    float                   m_neighbourMaxSeparationSquared;///< Max 3D separation of cylinder neighbours, stored squared, units mm^2 (XML value NeighbourMaxSeparation is in mm)
-    float                   m_searchSafetyFactor;           ///< Safety factor applied to the neighbour cut distance to define the kd-tree search box
-    unsigned int            m_layerSpanTolerance;           ///< Allowed pseudolayer excursion of the hit beyond the host cluster's [inner, outer] layer span
+  float m_minHostClusterEnergy; ///< Host eligibility: min cluster hadronic energy for clusters without an associated
+                                ///< track, units GeV
+  float m_maxRecombinationDistance; ///< Max distance between the hit and the nearest non-isolated member hit of the
+                                    ///< host, units mm
+  unsigned int
+      m_minClusterNeighbours; ///< Min number of the hit's cylinder neighbours that must belong to the host cluster
+  unsigned int
+      m_neighbourNLayers; ///< Pseudolayer window of the neighbour cylinder (same convention as the flag definition)
+  float m_neighbourCutDistanceSquared;   ///< Transverse distance of the neighbour cylinder, stored squared, units mm^2
+                                         ///< (XML value NeighbourCutDistance is in mm)
+  float m_neighbourMaxSeparationSquared; ///< Max 3D separation of cylinder neighbours, stored squared, units mm^2 (XML
+                                         ///< value NeighbourMaxSeparation is in mm)
+  float m_searchSafetyFactor; ///< Safety factor applied to the neighbour cut distance to define the kd-tree search box
+  unsigned int m_layerSpanTolerance; ///< Allowed pseudolayer excursion of the hit beyond the host cluster's [inner,
+                                     ///< outer] layer span
 
-    bool                    m_timingCutEnabled;             ///< Whether to require time compatibility between the hit and the host cluster
-    float                   m_maxTimeDifference;            ///< Max |hit time - host cluster energy-weighted mean hit time|, units ns
+  bool m_timingCutEnabled;   ///< Whether to require time compatibility between the hit and the host cluster
+  float m_maxTimeDifference; ///< Max |hit time - host cluster energy-weighted mean hit time|, units ns
 };
 
 } // namespace lc_content
