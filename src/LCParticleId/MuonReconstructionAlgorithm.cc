@@ -1,8 +1,8 @@
 /**
  *  @file   LCContent/src/LCParticleId/MuonReconstructionAlgorithm.cc
- * 
+ *
  *  @brief  Implementation of the muon reconstruction algorithm class.
- * 
+ *
  *  $Log: $
  */
 
@@ -14,592 +14,611 @@
 
 using namespace pandora;
 
-namespace lc_content
-{
+namespace lc_content {
 
-MuonReconstructionAlgorithm::MuonReconstructionAlgorithm() :
-    m_shouldClusterIsolatedHits(false),
-    m_shouldExcludeBIBHits(false),
-    m_maxClusterCaloHits(30),
-    m_minClusterOccupiedLayers(8),
-    m_minClusterLayerSpan(8),
-    m_nClusterLayersToFit(100),
-    m_maxClusterFitChi2(4.f),
-    m_maxDistanceToTrack(200.f),
-    m_minTrackCandidateEnergy(7.f),
-    m_minHelixClusterCosAngle(0.98f),
-    m_nExpectedTracksPerCluster(1),
-    m_nExpectedParentTracks(1),
-    m_minHelixCaloHitCosAngle(0.95f),
-    m_region1GenericDistance(3.f),
-    m_region2GenericDistance(6.f),
-    m_isolatedMinRegion1Hits(1),
-    m_isolatedMaxRegion2Hits(0),
-    m_maxGenericDistance(6.f),
-    m_isolatedMaxGenericDistance(3.f),
-    m_replaceCurrentClusterList(false),
-    m_replaceCurrentPfoList(false)
-{
+MuonReconstructionAlgorithm::MuonReconstructionAlgorithm()
+    : m_shouldClusterIsolatedHits(false), m_shouldExcludeBIBHits(false), m_maxClusterCaloHits(30),
+      m_minClusterOccupiedLayers(8), m_minClusterLayerSpan(8), m_nClusterLayersToFit(100), m_maxClusterFitChi2(4.f),
+      m_maxDistanceToTrack(200.f), m_minTrackCandidateEnergy(7.f), m_minHelixClusterCosAngle(0.98f),
+      m_nExpectedTracksPerCluster(1), m_nExpectedParentTracks(1), m_minHelixCaloHitCosAngle(0.95f),
+      m_region1GenericDistance(3.f), m_region2GenericDistance(6.f), m_isolatedMinRegion1Hits(1),
+      m_isolatedMaxRegion2Hits(0), m_maxGenericDistance(6.f), m_isolatedMaxGenericDistance(3.f),
+      m_replaceCurrentClusterList(false), m_replaceCurrentPfoList(false) {}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+StatusCode MuonReconstructionAlgorithm::Run() {
+  std::string muonClusterListName;
+  const ClusterList* pMuonClusterList = NULL;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::ReplaceCurrentList<CaloHit>(*this, m_inputMuonCaloHitListName));
+  PANDORA_RETURN_RESULT_IF(
+      STATUS_CODE_SUCCESS, !=,
+      PandoraContentApi::RunClusteringAlgorithm(*this, m_muonClusteringAlgName, pMuonClusterList, muonClusterListName));
+
+  if (!pMuonClusterList->empty()) {
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->AssociateMuonTracks(pMuonClusterList));
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->AddCaloHits(pMuonClusterList));
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->CreateMuonPfos(pMuonClusterList));
+  }
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->TidyLists());
+
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode MuonReconstructionAlgorithm::Run()
-{
-    std::string muonClusterListName;
-    const ClusterList *pMuonClusterList = NULL;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<CaloHit>(*this, m_inputMuonCaloHitListName));
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::RunClusteringAlgorithm(*this, m_muonClusteringAlgName, pMuonClusterList, muonClusterListName));
+StatusCode MuonReconstructionAlgorithm::AssociateMuonTracks(const ClusterList* const pMuonClusterList) const {
+  const GeometryManager* const pGeometryManager(PandoraContentApi::GetGeometry(*this));
+  const BFieldPlugin* const pBFieldPlugin(PandoraContentApi::GetPlugins(*this)->GetBFieldPlugin());
+  const float innerBField(pBFieldPlugin->GetBField(CartesianVector(0.f, 0.f, 0.f)));
 
-    if (!pMuonClusterList->empty())
-    {
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->AssociateMuonTracks(pMuonClusterList));
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->AddCaloHits(pMuonClusterList));
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->CreateMuonPfos(pMuonClusterList));
+  const float coilMidPointR(0.5f * (pGeometryManager->GetSubDetector(COIL).GetInnerRCoordinate() +
+                                    pGeometryManager->GetSubDetector(COIL).GetOuterRCoordinate()));
+  const float muonBarrelBField(pBFieldPlugin->GetBField(
+      CartesianVector(pGeometryManager->GetSubDetector(MUON_BARREL).GetInnerRCoordinate(), 0.f, 0.f)));
+  const float muonEndCapBField(pBFieldPlugin->GetBField(
+      CartesianVector(0.f, 0.f, std::fabs(pGeometryManager->GetSubDetector(MUON_ENDCAP).GetInnerZCoordinate()))));
+
+  const TrackList* pTrackList = NULL;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::GetList(*this, m_inputTrackListName, pTrackList));
+
+  for (ClusterList::const_iterator iter = pMuonClusterList->begin(), iterEnd = pMuonClusterList->end(); iter != iterEnd;
+       ++iter) {
+    const Cluster* const pCluster = *iter;
+
+    // Simple cuts on cluster properties
+    if (pCluster->GetNCaloHits() > m_maxClusterCaloHits)
+      continue;
+
+    if (pCluster->GetOrderedCaloHitList().size() < m_minClusterOccupiedLayers)
+      continue;
+
+    if ((pCluster->GetOuterPseudoLayer() - pCluster->GetInnerPseudoLayer() + 1) < m_minClusterLayerSpan)
+      continue;
+
+    // Get direction of the cluster
+    ClusterFitResult clusterFitResult;
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                             ClusterFitHelper::FitStart(pCluster, m_nClusterLayersToFit, clusterFitResult));
+
+    if (!clusterFitResult.IsFitSuccessful())
+      continue;
+
+    const CartesianVector clusterInnerCentroid(pCluster->GetCentroid(pCluster->GetInnerPseudoLayer()));
+    const bool isPositiveZ(clusterInnerCentroid.GetZ() > 0.f);
+
+    // Loop over all non-associated tracks in the current track list to find bestTrack
+    const Track* pBestTrack(NULL);
+    float bestTrackEnergy(0.f);
+    float bestDistanceToTrack(m_maxDistanceToTrack);
+
+    for (TrackList::const_iterator iterT = pTrackList->begin(), iterTEnd = pTrackList->end(); iterT != iterTEnd;
+         ++iterT) {
+      const Track* const pTrack = *iterT;
+
+      // Simple cuts on track properties
+      if (pTrack->HasAssociatedCluster() || !pTrack->CanFormPfo())
+        continue;
+
+      if (!pTrack->GetDaughterList().empty())
+        continue;
+
+      if (pTrack->GetEnergyAtDca() < m_minTrackCandidateEnergy)
+        continue;
+
+      if (pTrack->IsProjectedToEndCap() &&
+          (pTrack->GetTrackStateAtCalorimeter().GetPosition().GetZ() * clusterInnerCentroid.GetZ() < 0.f))
+        continue;
+
+      // Extract track helix fit
+      const Helix helix(pTrack->GetTrackStateAtCalorimeter().GetPosition(),
+                        pTrack->GetTrackStateAtCalorimeter().GetMomentum(), pTrack->GetCharge(), innerBField);
+
+      // Compare cluster and helix directions
+      CartesianVector muonEntryPoint(0.f, 0.f, 0.f);
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetMuonEntryPoint(helix, isPositiveZ, muonEntryPoint));
+
+      bool isInBarrel(false);
+      const float muonEntryR(
+          std::sqrt(muonEntryPoint.GetX() * muonEntryPoint.GetX() + muonEntryPoint.GetY() * muonEntryPoint.GetY()));
+
+      if (muonEntryR > coilMidPointR) {
+        isInBarrel = true;
+        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                                 helix.GetPointOnCircle(coilMidPointR, helix.GetReferencePoint(), muonEntryPoint));
+      }
+
+      // Create helix that can be propagated in muon system, outside central detector
+      const float externalBField(isInBarrel ? muonBarrelBField : muonEndCapBField);
+
+      const Helix externalHelix(muonEntryPoint, helix.GetExtrapolatedMomentum(muonEntryPoint),
+                                (externalBField < 0.f) ? -helix.GetCharge() : helix.GetCharge(),
+                                std::fabs(externalBField));
+
+      CartesianVector correctedMuonEntryPoint(0.f, 0.f, 0.f);
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                               this->GetMuonEntryPoint(externalHelix, isPositiveZ, correctedMuonEntryPoint));
+
+      const CartesianVector helixDirection(
+          externalHelix.GetExtrapolatedMomentum(correctedMuonEntryPoint).GetUnitVector());
+      const float helixClusterCosAngle(helixDirection.GetCosOpeningAngle(clusterFitResult.GetDirection()));
+
+      if (helixClusterCosAngle < m_minHelixClusterCosAngle)
+        continue;
+
+      // Calculate separation of helix and cluster inner centroid
+      CartesianVector helixSeparation(0.f, 0.f, 0.f);
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                               externalHelix.GetDistanceToPoint(clusterInnerCentroid, helixSeparation));
+
+      const float distanceToTrack(helixSeparation.GetZ());
+
+      if ((distanceToTrack < bestDistanceToTrack) ||
+          ((distanceToTrack == bestDistanceToTrack) && (pTrack->GetEnergyAtDca() > bestTrackEnergy))) {
+        pBestTrack = pTrack;
+        bestDistanceToTrack = distanceToTrack;
+        bestTrackEnergy = pTrack->GetEnergyAtDca();
+      }
     }
 
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->TidyLists());
+    if (NULL != pBestTrack) {
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                               PandoraContentApi::AddTrackClusterAssociation(*this, pBestTrack, pCluster));
+    }
+  }
 
-    return STATUS_CODE_SUCCESS;
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode MuonReconstructionAlgorithm::AssociateMuonTracks(const ClusterList *const pMuonClusterList) const
-{
-    const GeometryManager *const pGeometryManager(PandoraContentApi::GetGeometry(*this));
-    const BFieldPlugin *const pBFieldPlugin(PandoraContentApi::GetPlugins(*this)->GetBFieldPlugin());
-    const float innerBField(pBFieldPlugin->GetBField(CartesianVector(0.f, 0.f, 0.f)));
+StatusCode MuonReconstructionAlgorithm::GetMuonEntryPoint(const Helix& helix, const bool isPositiveZ,
+                                                          CartesianVector& muonEntryPoint) const {
+  const GeometryManager* const pGeometryManager(PandoraContentApi::GetGeometry(*this));
+  const float muonEndCapInnerZ(std::fabs(pGeometryManager->GetSubDetector(MUON_ENDCAP).GetInnerZCoordinate()));
 
-    const float coilMidPointR(0.5f * (pGeometryManager->GetSubDetector(COIL).GetInnerRCoordinate() + pGeometryManager->GetSubDetector(COIL).GetOuterRCoordinate()));
-    const float muonBarrelBField(pBFieldPlugin->GetBField(CartesianVector(pGeometryManager->GetSubDetector(MUON_BARREL).GetInnerRCoordinate(), 0.f, 0.f)));
-    const float muonEndCapBField(pBFieldPlugin->GetBField(CartesianVector(0.f, 0.f, std::fabs(pGeometryManager->GetSubDetector(MUON_ENDCAP).GetInnerZCoordinate()))));
+  float minGenericTime(std::numeric_limits<float>::max());
+  const CartesianVector& referencePoint(helix.GetReferencePoint());
 
-    const TrackList *pTrackList = NULL;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputTrackListName, pTrackList));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           helix.GetPointInZ(isPositiveZ ? muonEndCapInnerZ : -muonEndCapInnerZ, referencePoint,
+                                             muonEntryPoint, minGenericTime));
 
-    for (ClusterList::const_iterator iter = pMuonClusterList->begin(), iterEnd = pMuonClusterList->end(); iter != iterEnd; ++iter)
-    {
-        const Cluster *const pCluster = *iter;
+  const SubDetector& muonBarrel(pGeometryManager->GetSubDetector(MUON_BARREL));
+  const unsigned int muonBarrelInnerSymmetry(muonBarrel.GetInnerSymmetryOrder());
+  const float muonBarrelInnerPhi(muonBarrel.GetInnerPhiCoordinate());
+  const float muonBarrelInnerR(muonBarrel.GetInnerRCoordinate());
 
-        // Simple cuts on cluster properties
-        if (pCluster->GetNCaloHits() > m_maxClusterCaloHits)
-            continue;
+  if (muonBarrelInnerSymmetry > 0) {
+    const float pi(std::acos(-1.f));
+    const float twopi_n = 2.f * pi / (static_cast<float>(muonBarrelInnerSymmetry));
 
-        if (pCluster->GetOrderedCaloHitList().size() < m_minClusterOccupiedLayers)
-            continue;
+    for (unsigned int i = 0; i < muonBarrelInnerSymmetry; ++i) {
+      const float phi(twopi_n * static_cast<float>(i) + muonBarrelInnerPhi);
 
-        if ((pCluster->GetOuterPseudoLayer() - pCluster->GetInnerPseudoLayer() + 1) < m_minClusterLayerSpan)
-            continue;
+      CartesianVector barrelEntryPoint(0.f, 0.f, 0.f);
+      float genericTime(std::numeric_limits<float>::max());
 
-        // Get direction of the cluster
-        ClusterFitResult clusterFitResult;
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, ClusterFitHelper::FitStart(pCluster, m_nClusterLayersToFit, clusterFitResult));
+      const StatusCode statusCode(helix.GetPointInXY(muonBarrelInnerR * std::cos(phi), muonBarrelInnerR * std::sin(phi),
+                                                     std::cos(phi + 0.5f * pi), std::sin(phi + 0.5f * pi),
+                                                     referencePoint, barrelEntryPoint, genericTime));
 
-        if (!clusterFitResult.IsFitSuccessful())
-            continue;
-
-        const CartesianVector clusterInnerCentroid(pCluster->GetCentroid(pCluster->GetInnerPseudoLayer()));
-        const bool isPositiveZ(clusterInnerCentroid.GetZ() > 0.f);
-
-        // Loop over all non-associated tracks in the current track list to find bestTrack
-        const Track *pBestTrack(NULL);
-        float bestTrackEnergy(0.f);
-        float bestDistanceToTrack(m_maxDistanceToTrack);
-
-        for (TrackList::const_iterator iterT = pTrackList->begin(), iterTEnd = pTrackList->end(); iterT != iterTEnd; ++iterT)
-        {
-            const Track *const pTrack = *iterT;
-
-            // Simple cuts on track properties
-            if (pTrack->HasAssociatedCluster() || !pTrack->CanFormPfo())
-                continue;
-
-            if (!pTrack->GetDaughterList().empty())
-                continue;
-
-            if (pTrack->GetEnergyAtDca() < m_minTrackCandidateEnergy)
-                continue;
-
-            if (pTrack->IsProjectedToEndCap() && (pTrack->GetTrackStateAtCalorimeter().GetPosition().GetZ() * clusterInnerCentroid.GetZ() < 0.f))
-                continue;
-
-            // Extract track helix fit
-            const Helix helix(pTrack->GetTrackStateAtCalorimeter().GetPosition(), pTrack->GetTrackStateAtCalorimeter().GetMomentum(), pTrack->GetCharge(), innerBField);
-
-            // Compare cluster and helix directions
-            CartesianVector muonEntryPoint(0.f, 0.f, 0.f);
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetMuonEntryPoint(helix, isPositiveZ, muonEntryPoint));
-
-            bool isInBarrel(false);
-            const float muonEntryR(std::sqrt(muonEntryPoint.GetX() * muonEntryPoint.GetX() + muonEntryPoint.GetY() * muonEntryPoint.GetY()));
-
-            if (muonEntryR > coilMidPointR)
-            {
-                isInBarrel = true;
-                PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, helix.GetPointOnCircle(coilMidPointR, helix.GetReferencePoint(), muonEntryPoint));
-            }
-
-            // Create helix that can be propagated in muon system, outside central detector
-            const float externalBField(isInBarrel ? muonBarrelBField : muonEndCapBField);
-
-            const Helix externalHelix(muonEntryPoint, helix.GetExtrapolatedMomentum(muonEntryPoint),
-                (externalBField < 0.f) ? -helix.GetCharge() : helix.GetCharge(), std::fabs(externalBField));
-
-            CartesianVector correctedMuonEntryPoint(0.f, 0.f, 0.f);
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetMuonEntryPoint(externalHelix, isPositiveZ, correctedMuonEntryPoint));
-
-            const CartesianVector helixDirection(externalHelix.GetExtrapolatedMomentum(correctedMuonEntryPoint).GetUnitVector());
-            const float helixClusterCosAngle(helixDirection.GetCosOpeningAngle(clusterFitResult.GetDirection()));
-
-            if (helixClusterCosAngle < m_minHelixClusterCosAngle)
-                continue;
-
-            // Calculate separation of helix and cluster inner centroid
-            CartesianVector helixSeparation(0.f, 0.f, 0.f);
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, externalHelix.GetDistanceToPoint(clusterInnerCentroid, helixSeparation));
-
-            const float distanceToTrack(helixSeparation.GetZ());
- 
-            if ((distanceToTrack < bestDistanceToTrack) || ((distanceToTrack == bestDistanceToTrack) && (pTrack->GetEnergyAtDca() > bestTrackEnergy)))
-            {
-                pBestTrack = pTrack;
-                bestDistanceToTrack = distanceToTrack;
-                bestTrackEnergy = pTrack->GetEnergyAtDca();
-            }
-        }
-
-        if (NULL != pBestTrack)
-        {
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::AddTrackClusterAssociation(*this, pBestTrack, pCluster));
-        }
+      if ((STATUS_CODE_SUCCESS == statusCode) && (genericTime < minGenericTime)) {
+        minGenericTime = genericTime;
+        muonEntryPoint = barrelEntryPoint;
+      }
     }
+  } else {
+    CartesianVector barrelEntryPoint(0.f, 0.f, 0.f);
+    float genericTime(std::numeric_limits<float>::max());
 
-    return STATUS_CODE_SUCCESS;
+    const StatusCode statusCode(
+        helix.GetPointOnCircle(muonBarrelInnerR, referencePoint, barrelEntryPoint, genericTime));
+
+    if ((STATUS_CODE_SUCCESS == statusCode) && (genericTime < minGenericTime)) {
+      minGenericTime = genericTime;
+      muonEntryPoint = barrelEntryPoint;
+    }
+  }
+
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode MuonReconstructionAlgorithm::GetMuonEntryPoint(const Helix &helix, const bool isPositiveZ, CartesianVector &muonEntryPoint) const
-{
-    const GeometryManager *const pGeometryManager(PandoraContentApi::GetGeometry(*this));
-    const float muonEndCapInnerZ(std::fabs(pGeometryManager->GetSubDetector(MUON_ENDCAP).GetInnerZCoordinate()));
+StatusCode MuonReconstructionAlgorithm::AddCaloHits(const ClusterList* const pMuonClusterList) const {
+  const GeometryManager* const pGeometryManager(PandoraContentApi::GetGeometry(*this));
+  const float hCalEndCapInnerR(pGeometryManager->GetSubDetector(HCAL_ENDCAP).GetInnerRCoordinate());
+  const float eCalEndCapInnerR(pGeometryManager->GetSubDetector(ECAL_ENDCAP).GetInnerRCoordinate());
 
-    float minGenericTime(std::numeric_limits<float>::max());
-    const CartesianVector &referencePoint(helix.GetReferencePoint());
+  const float innerBField(
+      PandoraContentApi::GetPlugins(*this)->GetBFieldPlugin()->GetBField(CartesianVector(0.f, 0.f, 0.f)));
 
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, helix.GetPointInZ(isPositiveZ ? muonEndCapInnerZ : -muonEndCapInnerZ,
-        referencePoint, muonEntryPoint, minGenericTime));
+  const CaloHitList* pCaloHitList = NULL;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::GetList(*this, m_inputCaloHitListName, pCaloHitList));
 
-    const SubDetector &muonBarrel(pGeometryManager->GetSubDetector(MUON_BARREL));
-    const unsigned int muonBarrelInnerSymmetry(muonBarrel.GetInnerSymmetryOrder());
-    const float muonBarrelInnerPhi(muonBarrel.GetInnerPhiCoordinate());
-    const float muonBarrelInnerR(muonBarrel.GetInnerRCoordinate());
+  OrderedCaloHitList orderedCaloHitList;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, orderedCaloHitList.Add(*pCaloHitList));
 
-    if (muonBarrelInnerSymmetry > 0)
-    {
-        const float pi(std::acos(-1.f));
-        const float twopi_n = 2.f * pi / (static_cast<float>(muonBarrelInnerSymmetry));
+  for (ClusterList::const_iterator clusterIter = pMuonClusterList->begin(), clusterIterEnd = pMuonClusterList->end();
+       clusterIter != clusterIterEnd; ++clusterIter) {
+    const Cluster* const pCluster = *clusterIter;
 
-        for (unsigned int i = 0; i < muonBarrelInnerSymmetry; ++i)
-        {
-            const float phi(twopi_n * static_cast<float>(i) + muonBarrelInnerPhi);
+    // Check track associations
+    const TrackList& trackList(pCluster->GetAssociatedTrackList());
 
-            CartesianVector barrelEntryPoint(0.f, 0.f, 0.f);
-            float genericTime(std::numeric_limits<float>::max());
+    if (trackList.size() != m_nExpectedTracksPerCluster)
+      continue;
 
-            const StatusCode statusCode(helix.GetPointInXY(muonBarrelInnerR * std::cos(phi), muonBarrelInnerR * std::sin(phi),
-                 std::cos(phi + 0.5f * pi), std::sin(phi + 0.5f * pi), referencePoint, barrelEntryPoint, genericTime));
+    const Track* const pTrack = *(trackList.begin());
+    const Helix helix(pTrack->GetTrackStateAtCalorimeter().GetPosition(),
+                      pTrack->GetTrackStateAtCalorimeter().GetMomentum(), pTrack->GetCharge(), innerBField);
 
-            if ((STATUS_CODE_SUCCESS == statusCode) && (genericTime < minGenericTime))
-            {
-                minGenericTime = genericTime;
-                muonEntryPoint = barrelEntryPoint;
-            }
-        }
-    }
-    else
-    {
-        CartesianVector barrelEntryPoint(0.f, 0.f, 0.f);
-        float genericTime(std::numeric_limits<float>::max());
+    for (OrderedCaloHitList::const_iterator layerIter = orderedCaloHitList.begin(),
+                                            layerIterEnd = orderedCaloHitList.end();
+         layerIter != layerIterEnd; ++layerIter) {
+      TrackDistanceInfoVector trackDistanceInfoVector;
+      unsigned int nHitsInRegion1(0), nHitsInRegion2(0);
 
-        const StatusCode statusCode(helix.GetPointOnCircle(muonBarrelInnerR, referencePoint, barrelEntryPoint, genericTime));
+      for (CaloHitList::const_iterator hitIter = layerIter->second->begin(), hitIterEnd = layerIter->second->end();
+           hitIter != hitIterEnd; ++hitIter) {
+        const CaloHit* const pCaloHit = *hitIter;
 
-        if ((STATUS_CODE_SUCCESS == statusCode) && (genericTime < minGenericTime))
-        {
-            minGenericTime = genericTime;
-            muonEntryPoint = barrelEntryPoint;
-        }
-    }
+        if ((!m_shouldClusterIsolatedHits && pCaloHit->IsIsolated()) ||
+            !PandoraContentApi::IsAvailable(*this, pCaloHit))
+          continue;
 
-    return STATUS_CODE_SUCCESS;
-}
+        if (m_shouldExcludeBIBHits && pCaloHit->IsPossibleBIB())
+          continue;
 
-//------------------------------------------------------------------------------------------------------------------------------------------
+        const CartesianVector& caloHitPosition(pCaloHit->GetPositionVector());
+        const CartesianVector helixDirection(helix.GetExtrapolatedMomentum(caloHitPosition).GetUnitVector());
 
-StatusCode MuonReconstructionAlgorithm::AddCaloHits(const ClusterList *const pMuonClusterList) const
-{
-    const GeometryManager *const pGeometryManager(PandoraContentApi::GetGeometry(*this));
-    const float hCalEndCapInnerR(pGeometryManager->GetSubDetector(HCAL_ENDCAP).GetInnerRCoordinate());
-    const float eCalEndCapInnerR(pGeometryManager->GetSubDetector(ECAL_ENDCAP).GetInnerRCoordinate());
+        if (pCaloHit->GetExpectedDirection().GetCosOpeningAngle(helixDirection) < m_minHelixCaloHitCosAngle)
+          continue;
 
-    const float innerBField(PandoraContentApi::GetPlugins(*this)->GetBFieldPlugin()->GetBField(CartesianVector(0.f, 0.f, 0.f)));
+        if (ENDCAP == pCaloHit->GetHitRegion()) {
+          CartesianVector intersectionPoint(0.f, 0.f, 0.f);
+          PANDORA_RETURN_RESULT_IF(
+              STATUS_CODE_SUCCESS, !=,
+              helix.GetPointInZ(caloHitPosition.GetZ(), helix.GetReferencePoint(), intersectionPoint));
 
-    const CaloHitList *pCaloHitList = NULL;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputCaloHitListName, pCaloHitList));
+          const float helixR(std::sqrt(intersectionPoint.GetX() * intersectionPoint.GetX() +
+                                       intersectionPoint.GetY() * intersectionPoint.GetY()));
 
-    OrderedCaloHitList orderedCaloHitList;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, orderedCaloHitList.Add(*pCaloHitList));
-
-    for (ClusterList::const_iterator clusterIter = pMuonClusterList->begin(), clusterIterEnd = pMuonClusterList->end(); clusterIter != clusterIterEnd; ++clusterIter)
-    {
-        const Cluster *const pCluster = *clusterIter;
-
-        // Check track associations
-        const TrackList &trackList(pCluster->GetAssociatedTrackList());
-
-        if (trackList.size() != m_nExpectedTracksPerCluster)
+          if ((HCAL == pCaloHit->GetHitType()) && (helixR < hCalEndCapInnerR))
             continue;
 
-        const Track *const pTrack = *(trackList.begin());
-        const Helix helix(pTrack->GetTrackStateAtCalorimeter().GetPosition(), pTrack->GetTrackStateAtCalorimeter().GetMomentum(), pTrack->GetCharge(), innerBField);
-
-        for (OrderedCaloHitList::const_iterator layerIter = orderedCaloHitList.begin(), layerIterEnd = orderedCaloHitList.end(); layerIter != layerIterEnd; ++layerIter)
-        {
-            TrackDistanceInfoVector trackDistanceInfoVector;
-            unsigned int nHitsInRegion1(0), nHitsInRegion2(0);
-
-            for (CaloHitList::const_iterator hitIter = layerIter->second->begin(), hitIterEnd = layerIter->second->end(); hitIter != hitIterEnd; ++hitIter)
-            {
-                const CaloHit *const pCaloHit = *hitIter;
-
-                if ((!m_shouldClusterIsolatedHits && pCaloHit->IsIsolated()) || !PandoraContentApi::IsAvailable(*this, pCaloHit))
-                    continue;
-
-                if (m_shouldExcludeBIBHits && pCaloHit->IsPossibleBIB())
-                    continue;
-
-                const CartesianVector &caloHitPosition(pCaloHit->GetPositionVector());
-                const CartesianVector helixDirection(helix.GetExtrapolatedMomentum(caloHitPosition).GetUnitVector());
-
-                if (pCaloHit->GetExpectedDirection().GetCosOpeningAngle(helixDirection) < m_minHelixCaloHitCosAngle)
-                    continue;
-
-                if (ENDCAP == pCaloHit->GetHitRegion())
-                {
-                    CartesianVector intersectionPoint(0.f, 0.f, 0.f);
-                    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, helix.GetPointInZ(caloHitPosition.GetZ(), helix.GetReferencePoint(), intersectionPoint));
-
-                    const float helixR(std::sqrt(intersectionPoint.GetX() * intersectionPoint.GetX() + intersectionPoint.GetY() * intersectionPoint.GetY()));
-
-                    if ((HCAL == pCaloHit->GetHitType()) && (helixR < hCalEndCapInnerR))
-                        continue;
-
-                    if ((ECAL == pCaloHit->GetHitType()) && (helixR < eCalEndCapInnerR))
-                        continue;
-                }
-
-                CartesianVector helixSeparation(0.f, 0.f, 0.f);
-                PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, helix.GetDistanceToPoint(caloHitPosition, helixSeparation));
-
-                const float cellLengthScale(pCaloHit->GetCellLengthScale());
-
-                if (cellLengthScale < std::numeric_limits<float>::epsilon())
-                    continue;
-
-                const float genericDistance(helixSeparation.GetMagnitude() / cellLengthScale);
-                trackDistanceInfoVector.push_back(TrackDistanceInfo(pCaloHit, genericDistance));
-
-                if (genericDistance < m_region1GenericDistance)
-                {
-                    ++nHitsInRegion1;
-                }
-                else if (genericDistance < m_region2GenericDistance)
-                {
-                    ++nHitsInRegion2;
-                }
-            }
-
-            const bool isIsolated((nHitsInRegion1 >= m_isolatedMinRegion1Hits) && (nHitsInRegion2 <= m_isolatedMaxRegion2Hits));
-            std::sort(trackDistanceInfoVector.begin(), trackDistanceInfoVector.end(), MuonReconstructionAlgorithm::SortByDistanceToTrack);
-
-            for (TrackDistanceInfoVector::const_iterator iter = trackDistanceInfoVector.begin(), iterEnd = trackDistanceInfoVector.end(); iter != iterEnd; ++iter)
-            {
-                if ((iter->second > m_maxGenericDistance) || (isIsolated && (iter->second > m_isolatedMaxGenericDistance)))
-                    break;
-
-                PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::AddToCluster(*this, pCluster, iter->first));
-
-                if (!isIsolated)
-                    break;
-            }
-        }
-    }
-
-    return STATUS_CODE_SUCCESS;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------------------
-
-StatusCode MuonReconstructionAlgorithm::CreateMuonPfos(const ClusterList *const pMuonClusterList) const
-{
-    const PfoList *pPfoList = NULL; std::string pfoListName;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::CreateTemporaryListAndSetCurrent(*this, pPfoList, pfoListName));
-
-    for (ClusterList::const_iterator iter = pMuonClusterList->begin(), iterEnd = pMuonClusterList->end(); iter != iterEnd; ++iter)
-    {
-        PandoraContentApi::ParticleFlowObject::Parameters pfoParameters;
-
-        const Cluster *const pCluster = *iter;
-        pfoParameters.m_clusterList.push_back(pCluster);
-
-        // Consider associated tracks
-        const TrackList &trackList(pCluster->GetAssociatedTrackList());
-
-        if (trackList.size() != m_nExpectedTracksPerCluster)
-            continue;
-
-        const Track *const pTrack = *(trackList.begin());
-        pfoParameters.m_trackList.push_back(pTrack);
-
-        // Examine track relationships
-        const TrackList &parentTrackList(pTrack->GetParentList());
-
-        if ((parentTrackList.size() > m_nExpectedParentTracks) || !pTrack->GetDaughterList().empty() || !pTrack->GetSiblingList().empty())
-        {
-            std::cout << "MuonReconstructionAlgorithm: invalid/unexpected track relationships for muon." << std::endl;
+          if ((ECAL == pCaloHit->GetHitType()) && (helixR < eCalEndCapInnerR))
             continue;
         }
 
-        if (!parentTrackList.empty())
-        {
-            pfoParameters.m_trackList.insert(pfoParameters.m_trackList.end(), parentTrackList.begin(), parentTrackList.end());
+        CartesianVector helixSeparation(0.f, 0.f, 0.f);
+        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, helix.GetDistanceToPoint(caloHitPosition, helixSeparation));
+
+        const float cellLengthScale(pCaloHit->GetCellLengthScale());
+
+        if (cellLengthScale < std::numeric_limits<float>::epsilon())
+          continue;
+
+        const float genericDistance(helixSeparation.GetMagnitude() / cellLengthScale);
+        trackDistanceInfoVector.push_back(TrackDistanceInfo(pCaloHit, genericDistance));
+
+        if (genericDistance < m_region1GenericDistance) {
+          ++nHitsInRegion1;
+        } else if (genericDistance < m_region2GenericDistance) {
+          ++nHitsInRegion2;
         }
+      }
 
-        pfoParameters.m_charge = pTrack->GetCharge();
-        pfoParameters.m_momentum = pTrack->GetMomentumAtDca();
-        pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ? MU_PLUS : MU_MINUS;
-        pfoParameters.m_mass = PdgTable::GetParticleMass(pfoParameters.m_particleId.Get());
-        pfoParameters.m_energy = std::sqrt(pfoParameters.m_mass.Get() * pfoParameters.m_mass.Get() + pfoParameters.m_momentum.Get().GetMagnitudeSquared());
+      const bool isIsolated((nHitsInRegion1 >= m_isolatedMinRegion1Hits) &&
+                            (nHitsInRegion2 <= m_isolatedMaxRegion2Hits));
+      std::sort(trackDistanceInfoVector.begin(), trackDistanceInfoVector.end(),
+                MuonReconstructionAlgorithm::SortByDistanceToTrack);
 
-        const ParticleFlowObject *pPfo(NULL);
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, pPfo));
+      for (TrackDistanceInfoVector::const_iterator iter = trackDistanceInfoVector.begin(),
+                                                   iterEnd = trackDistanceInfoVector.end();
+           iter != iterEnd; ++iter) {
+        if ((iter->second > m_maxGenericDistance) || (isIsolated && (iter->second > m_isolatedMaxGenericDistance)))
+          break;
+
+        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                                 PandoraContentApi::AddToCluster(*this, pCluster, iter->first));
+
+        if (!isIsolated)
+          break;
+      }
     }
+  }
 
-    if (!pMuonClusterList->empty() && !pPfoList->empty())
-    {
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList<Cluster>(*this, m_outputMuonClusterListName));
-
-        if (m_replaceCurrentClusterList)
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<Cluster>(*this, m_outputMuonClusterListName));
-
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList<Pfo>(*this, m_outputMuonPfoListName));
-
-        if (m_replaceCurrentPfoList)
-            PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<Pfo>(*this, m_outputMuonPfoListName));
-    }
-
-    return STATUS_CODE_SUCCESS;
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode MuonReconstructionAlgorithm::TidyLists() const
-{
-    // Make list of all tracks, clusters and calo hits in muon pfos
-    TrackList pfoTrackList; CaloHitList pfoCaloHitList; ClusterList pfoClusterList;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->GetPfoComponents(pfoTrackList, pfoCaloHitList, pfoClusterList));
+StatusCode MuonReconstructionAlgorithm::CreateMuonPfos(const ClusterList* const pMuonClusterList) const {
+  const PfoList* pPfoList = NULL;
+  std::string pfoListName;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::CreateTemporaryListAndSetCurrent(*this, pPfoList, pfoListName));
 
-    // Save the muon-removed track list
-    const TrackList *pInputTrackList = NULL;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputTrackListName, pInputTrackList));
+  for (ClusterList::const_iterator iter = pMuonClusterList->begin(), iterEnd = pMuonClusterList->end(); iter != iterEnd;
+       ++iter) {
+    PandoraContentApi::ParticleFlowObject::Parameters pfoParameters;
 
-    TrackList outputTrackList(*pInputTrackList);
+    const Cluster* const pCluster = *iter;
+    pfoParameters.m_clusterList.push_back(pCluster);
 
-    for (TrackList::const_iterator iter = pfoTrackList.begin(), iterEnd = pfoTrackList.end(); iter != iterEnd; ++iter)
-    {
-        TrackList::iterator outputIter = std::find(outputTrackList.begin(), outputTrackList.end(), *iter);
+    // Consider associated tracks
+    const TrackList& trackList(pCluster->GetAssociatedTrackList());
 
-        if (outputTrackList.end() != outputIter)
-            outputTrackList.erase(outputIter);
+    if (trackList.size() != m_nExpectedTracksPerCluster)
+      continue;
+
+    const Track* const pTrack = *(trackList.begin());
+    pfoParameters.m_trackList.push_back(pTrack);
+
+    // Examine track relationships
+    const TrackList& parentTrackList(pTrack->GetParentList());
+
+    if ((parentTrackList.size() > m_nExpectedParentTracks) || !pTrack->GetDaughterList().empty() ||
+        !pTrack->GetSiblingList().empty()) {
+      std::cout << "MuonReconstructionAlgorithm: invalid/unexpected track relationships for muon." << std::endl;
+      continue;
     }
 
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList(*this, outputTrackList, m_outputTrackListName));
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<Track>(*this, m_replacementTrackListName));
-
-    // Save the muon-removed calo hit list
-    const CaloHitList *pInputCaloHitList = NULL;
-    const CaloHitList *pInputMuonCaloHitList = NULL;
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputCaloHitListName, pInputCaloHitList));
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::GetList(*this, m_inputMuonCaloHitListName, pInputMuonCaloHitList));
-
-    CaloHitList outputCaloHitList(*pInputCaloHitList);
-    CaloHitList outputMuonCaloHitList(*pInputMuonCaloHitList);
-
-    for (CaloHitList::const_iterator iter = pfoCaloHitList.begin(), iterEnd = pfoCaloHitList.end(); iter != iterEnd; ++iter)
-    {
-        CaloHitList::iterator outputIter = std::find(outputCaloHitList.begin(), outputCaloHitList.end(), *iter);
-        CaloHitList::iterator outputMuonIter = std::find(outputMuonCaloHitList.begin(), outputMuonCaloHitList.end(), *iter);
-
-        if (outputCaloHitList.end() != outputIter)
-            outputCaloHitList.erase(outputIter);
-
-        if (outputMuonCaloHitList.end() != outputMuonIter)
-            outputMuonCaloHitList.erase(outputMuonIter);
+    if (!parentTrackList.empty()) {
+      pfoParameters.m_trackList.insert(pfoParameters.m_trackList.end(), parentTrackList.begin(), parentTrackList.end());
     }
 
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList(*this, outputCaloHitList, m_outputCaloHitListName));
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList(*this, outputMuonCaloHitList, m_outputMuonCaloHitListName));
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::ReplaceCurrentList<CaloHit>(*this, m_replacementCaloHitListName));
+    pfoParameters.m_charge = pTrack->GetCharge();
+    pfoParameters.m_momentum = pTrack->GetMomentumAtDca();
+    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ? MU_PLUS : MU_MINUS;
+    pfoParameters.m_mass = PdgTable::GetParticleMass(pfoParameters.m_particleId.Get());
+    pfoParameters.m_energy = std::sqrt(pfoParameters.m_mass.Get() * pfoParameters.m_mass.Get() +
+                                       pfoParameters.m_momentum.Get().GetMagnitudeSquared());
 
-    return STATUS_CODE_SUCCESS;
+    const ParticleFlowObject* pPfo(NULL);
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                             PandoraContentApi::ParticleFlowObject::Create(*this, pfoParameters, pPfo));
+  }
+
+  if (!pMuonClusterList->empty() && !pPfoList->empty()) {
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                             PandoraContentApi::SaveList<Cluster>(*this, m_outputMuonClusterListName));
+
+    if (m_replaceCurrentClusterList)
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                               PandoraContentApi::ReplaceCurrentList<Cluster>(*this, m_outputMuonClusterListName));
+
+    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, PandoraContentApi::SaveList<Pfo>(*this, m_outputMuonPfoListName));
+
+    if (m_replaceCurrentPfoList)
+      PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                               PandoraContentApi::ReplaceCurrentList<Pfo>(*this, m_outputMuonPfoListName));
+  }
+
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode MuonReconstructionAlgorithm::GetPfoComponents(TrackList &pfoTrackList, CaloHitList &pfoCaloHitList, ClusterList &pfoClusterList) const
-{
-    const PfoList *pPfoList = NULL;
-    const StatusCode statusCode(PandoraContentApi::GetList(*this, m_outputMuonPfoListName, pPfoList));
+StatusCode MuonReconstructionAlgorithm::TidyLists() const {
+  // Make list of all tracks, clusters and calo hits in muon pfos
+  TrackList pfoTrackList;
+  CaloHitList pfoCaloHitList;
+  ClusterList pfoClusterList;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           this->GetPfoComponents(pfoTrackList, pfoCaloHitList, pfoClusterList));
 
-    if (STATUS_CODE_NOT_INITIALIZED == statusCode)
-        return STATUS_CODE_SUCCESS;
+  // Save the muon-removed track list
+  const TrackList* pInputTrackList = NULL;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::GetList(*this, m_inputTrackListName, pInputTrackList));
 
-    if (STATUS_CODE_SUCCESS != statusCode)
-        return statusCode;
+  TrackList outputTrackList(*pInputTrackList);
 
-    for (PfoList::const_iterator iter = pPfoList->begin(), iterEnd = pPfoList->end(); iter != iterEnd; ++iter)
-    {
-        const ParticleFlowObject *const pPfo = *iter;
-        const int particleId(pPfo->GetParticleId());
+  for (TrackList::const_iterator iter = pfoTrackList.begin(), iterEnd = pfoTrackList.end(); iter != iterEnd; ++iter) {
+    TrackList::iterator outputIter = std::find(outputTrackList.begin(), outputTrackList.end(), *iter);
 
-        if ((particleId != MU_MINUS) && (particleId != MU_PLUS))
-            return STATUS_CODE_FAILURE;
+    if (outputTrackList.end() != outputIter)
+      outputTrackList.erase(outputIter);
+  }
 
-        pfoTrackList.insert(pfoTrackList.end(), pPfo->GetTrackList().begin(), pPfo->GetTrackList().end());
-        pfoClusterList.insert(pfoClusterList.end(), pPfo->GetClusterList().begin(), pPfo->GetClusterList().end());
-    }
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::SaveList(*this, outputTrackList, m_outputTrackListName));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::ReplaceCurrentList<Track>(*this, m_replacementTrackListName));
 
-    for (ClusterList::const_iterator iter = pfoClusterList.begin(), iterEnd = pfoClusterList.end(); iter != iterEnd; ++iter)
-    {
-        const Cluster *const pCluster = *iter;
-        pCluster->GetOrderedCaloHitList().FillCaloHitList(pfoCaloHitList);
-        pfoCaloHitList.insert(pfoCaloHitList.end(), pCluster->GetIsolatedCaloHitList().begin(), pCluster->GetIsolatedCaloHitList().end());
-    }
+  // Save the muon-removed calo hit list
+  const CaloHitList* pInputCaloHitList = NULL;
+  const CaloHitList* pInputMuonCaloHitList = NULL;
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::GetList(*this, m_inputCaloHitListName, pInputCaloHitList));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::GetList(*this, m_inputMuonCaloHitListName, pInputMuonCaloHitList));
 
-    return STATUS_CODE_SUCCESS;
+  CaloHitList outputCaloHitList(*pInputCaloHitList);
+  CaloHitList outputMuonCaloHitList(*pInputMuonCaloHitList);
+
+  for (CaloHitList::const_iterator iter = pfoCaloHitList.begin(), iterEnd = pfoCaloHitList.end(); iter != iterEnd;
+       ++iter) {
+    CaloHitList::iterator outputIter = std::find(outputCaloHitList.begin(), outputCaloHitList.end(), *iter);
+    CaloHitList::iterator outputMuonIter = std::find(outputMuonCaloHitList.begin(), outputMuonCaloHitList.end(), *iter);
+
+    if (outputCaloHitList.end() != outputIter)
+      outputCaloHitList.erase(outputIter);
+
+    if (outputMuonCaloHitList.end() != outputMuonIter)
+      outputMuonCaloHitList.erase(outputMuonIter);
+  }
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::SaveList(*this, outputCaloHitList, m_outputCaloHitListName));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::SaveList(*this, outputMuonCaloHitList, m_outputMuonCaloHitListName));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           PandoraContentApi::ReplaceCurrentList<CaloHit>(*this, m_replacementCaloHitListName));
+
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode MuonReconstructionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle)
-{
-    // Input lists
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "InputTrackListName", m_inputTrackListName));
+StatusCode MuonReconstructionAlgorithm::GetPfoComponents(TrackList& pfoTrackList, CaloHitList& pfoCaloHitList,
+                                                         ClusterList& pfoClusterList) const {
+  const PfoList* pPfoList = NULL;
+  const StatusCode statusCode(PandoraContentApi::GetList(*this, m_outputMuonPfoListName, pPfoList));
 
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "InputCaloHitListName", m_inputCaloHitListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "InputMuonCaloHitListName", m_inputMuonCaloHitListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ProcessAlgorithm(*this, xmlHandle,
-        "MuonClusterFormation", m_muonClusteringAlgName));
-
-    // Clustering
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "ShouldClusterIsolatedHits", m_shouldClusterIsolatedHits));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "ShouldExcludeBIBHits", m_shouldExcludeBIBHits));
-
-    // Cluster-track association
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MaxClusterCaloHits", m_maxClusterCaloHits));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MinClusterOccupiedLayers", m_minClusterOccupiedLayers));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MinClusterLayerSpan", m_minClusterLayerSpan));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "NClusterLayersToFit", m_nClusterLayersToFit));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MaxClusterFitChi2", m_maxClusterFitChi2));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MaxDistanceToTrack", m_maxDistanceToTrack));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MinTrackCandidateEnergy", m_minTrackCandidateEnergy));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MinHelixClusterCosAngle", m_minHelixClusterCosAngle));
-
-    // Addition of ecal/hcal hits
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "NExpectedTracksPerCluster", m_nExpectedTracksPerCluster));
-
-    if (0 == m_nExpectedTracksPerCluster)
-        return STATUS_CODE_INVALID_PARAMETER;
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "NExpectedParentTracks", m_nExpectedParentTracks));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MinHelixCaloHitCosAngle", m_minHelixCaloHitCosAngle));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "Region1GenericDistance", m_region1GenericDistance));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "Region2GenericDistance", m_region2GenericDistance));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "IsolatedMinRegion1Hits", m_isolatedMinRegion1Hits));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "IsolatedMaxRegion2Hits", m_isolatedMaxRegion2Hits));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "MaxGenericDistance", m_maxGenericDistance));
-
-    PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=, XmlHelper::ReadValue(xmlHandle,
-        "IsolatedMaxGenericDistance", m_isolatedMaxGenericDistance));
-
-    // Output lists
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "OutputTrackListName", m_outputTrackListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "OutputCaloHitListName", m_outputCaloHitListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "OutputMuonCaloHitListName", m_outputMuonCaloHitListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "OutputMuonClusterListName", m_outputMuonClusterListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "OutputMuonPfoListName", m_outputMuonPfoListName));
-
-    // Current list management
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "ReplacementTrackListName", m_replacementTrackListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "ReplacementCaloHitListName", m_replacementCaloHitListName));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "ReplaceCurrentClusterList", m_replaceCurrentClusterList));
-
-    PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, XmlHelper::ReadValue(xmlHandle,
-        "ReplaceCurrentPfoList", m_replaceCurrentPfoList));
-
+  if (STATUS_CODE_NOT_INITIALIZED == statusCode)
     return STATUS_CODE_SUCCESS;
+
+  if (STATUS_CODE_SUCCESS != statusCode)
+    return statusCode;
+
+  for (PfoList::const_iterator iter = pPfoList->begin(), iterEnd = pPfoList->end(); iter != iterEnd; ++iter) {
+    const ParticleFlowObject* const pPfo = *iter;
+    const int particleId(pPfo->GetParticleId());
+
+    if ((particleId != MU_MINUS) && (particleId != MU_PLUS))
+      return STATUS_CODE_FAILURE;
+
+    pfoTrackList.insert(pfoTrackList.end(), pPfo->GetTrackList().begin(), pPfo->GetTrackList().end());
+    pfoClusterList.insert(pfoClusterList.end(), pPfo->GetClusterList().begin(), pPfo->GetClusterList().end());
+  }
+
+  for (ClusterList::const_iterator iter = pfoClusterList.begin(), iterEnd = pfoClusterList.end(); iter != iterEnd;
+       ++iter) {
+    const Cluster* const pCluster = *iter;
+    pCluster->GetOrderedCaloHitList().FillCaloHitList(pfoCaloHitList);
+    pfoCaloHitList.insert(pfoCaloHitList.end(), pCluster->GetIsolatedCaloHitList().begin(),
+                          pCluster->GetIsolatedCaloHitList().end());
+  }
+
+  return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+StatusCode MuonReconstructionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle) {
+  // Input lists
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "InputTrackListName", m_inputTrackListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "InputCaloHitListName", m_inputCaloHitListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "InputMuonCaloHitListName", m_inputMuonCaloHitListName));
+
+  PANDORA_RETURN_RESULT_IF(
+      STATUS_CODE_SUCCESS, !=,
+      XmlHelper::ProcessAlgorithm(*this, xmlHandle, "MuonClusterFormation", m_muonClusteringAlgName));
+
+  // Clustering
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "ShouldClusterIsolatedHits", m_shouldClusterIsolatedHits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "ShouldExcludeBIBHits", m_shouldExcludeBIBHits));
+
+  // Cluster-track association
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "MaxClusterCaloHits", m_maxClusterCaloHits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "MinClusterOccupiedLayers", m_minClusterOccupiedLayers));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "MinClusterLayerSpan", m_minClusterLayerSpan));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "NClusterLayersToFit", m_nClusterLayersToFit));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "MaxClusterFitChi2", m_maxClusterFitChi2));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "MaxDistanceToTrack", m_maxDistanceToTrack));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "MinTrackCandidateEnergy", m_minTrackCandidateEnergy));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "MinHelixClusterCosAngle", m_minHelixClusterCosAngle));
+
+  // Addition of ecal/hcal hits
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "NExpectedTracksPerCluster", m_nExpectedTracksPerCluster));
+
+  if (0 == m_nExpectedTracksPerCluster)
+    return STATUS_CODE_INVALID_PARAMETER;
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "NExpectedParentTracks", m_nExpectedParentTracks));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "MinHelixCaloHitCosAngle", m_minHelixCaloHitCosAngle));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "Region1GenericDistance", m_region1GenericDistance));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "Region2GenericDistance", m_region2GenericDistance));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "IsolatedMinRegion1Hits", m_isolatedMinRegion1Hits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "IsolatedMaxRegion2Hits", m_isolatedMaxRegion2Hits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "MaxGenericDistance", m_maxGenericDistance));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(
+      STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+      XmlHelper::ReadValue(xmlHandle, "IsolatedMaxGenericDistance", m_isolatedMaxGenericDistance));
+
+  // Output lists
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "OutputTrackListName", m_outputTrackListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "OutputCaloHitListName", m_outputCaloHitListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "OutputMuonCaloHitListName", m_outputMuonCaloHitListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "OutputMuonClusterListName", m_outputMuonClusterListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "OutputMuonPfoListName", m_outputMuonPfoListName));
+
+  // Current list management
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "ReplacementTrackListName", m_replacementTrackListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "ReplacementCaloHitListName", m_replacementCaloHitListName));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "ReplaceCurrentClusterList", m_replaceCurrentClusterList));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                           XmlHelper::ReadValue(xmlHandle, "ReplaceCurrentPfoList", m_replaceCurrentPfoList));
+
+  return STATUS_CODE_SUCCESS;
 }
 
 } // namespace lc_content

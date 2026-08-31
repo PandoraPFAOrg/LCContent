@@ -23,7 +23,7 @@ namespace lc_content {
 IsolatedHitMergingAlgorithm::IsolatedHitMergingAlgorithm()
     : m_shouldUseCurrentClusterList(true), m_minHitsInCluster(4), m_maxRecombinationDistance(250.f),
       m_minCosOpeningAngle(0.f), m_useCorrectedHadronicEnergy(false), m_ignorePhotons(false), m_ignoreCharged(false),
-      m_useAngularDistance(false) {}
+      m_useAngularDistance(false), m_shouldExcludeBIBHits(false) {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -91,6 +91,9 @@ StatusCode IsolatedHitMergingAlgorithm::Run() {
          hitIter != hitIterEnd; ++hitIter) {
       const CaloHit* const pCaloHit = *hitIter;
 
+      if (m_shouldExcludeBIBHits && pCaloHit->IsPossibleBIB())
+        continue;
+
       const Cluster* pBestHostCluster(NULL);
       float bestHostClusterEnergy(0.);
       float minDistance(m_maxRecombinationDistance);
@@ -129,6 +132,9 @@ StatusCode IsolatedHitMergingAlgorithm::Run() {
 
   for (const auto* pCaloHit : *pCaloHitList) {
     if (!pCaloHit->IsIsolated() || !PandoraContentApi::IsAvailable(*this, pCaloHit))
+      continue;
+
+    if (m_shouldExcludeBIBHits && pCaloHit->IsPossibleBIB())
       continue;
 
     const Cluster* pBestHostCluster(NULL);
@@ -251,6 +257,9 @@ StatusCode IsolatedHitMergingAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
   PANDORA_RETURN_RESULT_IF_AND_IF(
       STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
       XmlHelper::ReadValue(xmlHandle, "ShouldUseCurrentClusterList", m_shouldUseCurrentClusterList));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "ShouldExcludeBIBHits", m_shouldExcludeBIBHits));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(
       STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
