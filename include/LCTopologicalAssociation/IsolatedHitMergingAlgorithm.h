@@ -81,7 +81,8 @@ private:
                                      ///< (default: false)
   bool m_ignorePhotons;              ///< Whether to ignore photons when merging isolated hits (default: false)
   bool m_ignoreCharged;              ///< Whether to ignore charged clusters when merging isolated hits (default: false)
-  bool m_useAngularDistance; ///< Whether to use angular (1-cos(angle)) distance instead of Cartesian (default: false)
+  bool m_useAngularDistance;   ///< Whether to use angular (1-cos(angle)) distance instead of Cartesian (default: false)
+  bool m_shouldExcludeBIBHits; ///< Whether to exclude hits flagged as possible beam-induced background
 };
 
 } // namespace lc_content
