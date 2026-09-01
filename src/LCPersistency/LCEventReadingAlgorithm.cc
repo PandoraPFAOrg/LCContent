@@ -12,8 +12,7 @@
 
 using namespace pandora;
 
-namespace lc_content
-{
+namespace lc_content {
 
 LCEventReadingAlgorithm::LCEventReadingAlgorithm() : EventReadingAlgorithm() {}
 
@@ -23,17 +22,15 @@ LCEventReadingAlgorithm::~LCEventReadingAlgorithm() {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode LCEventReadingAlgorithm::Initialize()
-{
-    const StatusCode statusCode(this->EventReadingAlgorithm::Initialize());
+StatusCode LCEventReadingAlgorithm::Initialize() {
+  const StatusCode statusCode(this->EventReadingAlgorithm::Initialize());
 
-    if (STATUS_CODE_SUCCESS != statusCode)
-        return statusCode;
+  if (STATUS_CODE_SUCCESS != statusCode)
+    return statusCode;
 
-    m_pEventFileReader->SetFactory(new LCTrackFactory);
+  m_pEventFileReader->SetFactory(new LCTrackFactory);
 
-    return STATUS_CODE_SUCCESS;
-
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

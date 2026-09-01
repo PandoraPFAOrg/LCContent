@@ -1,8 +1,8 @@
 /**
  *  @file   LCContent/include/LCTopologicalAssociation/ShowerMipMergingAlgorithm.h
- * 
+ *
  *  @brief  Header file for the shower mip merging algorithm class.
- * 
+ *
  *  $Log: $
  */
 #ifndef LC_SHOWER_MIP_MERGING_ALGORITHM_H
@@ -10,40 +10,39 @@
 
 #include "Pandora/Algorithm.h"
 
-namespace lc_content
-{
+namespace lc_content {
 
 /**
  *  @brief  ShowerMipMergingAlgorithm class
  */
-class ShowerMipMergingAlgorithm : public pandora::Algorithm
-{
+class ShowerMipMergingAlgorithm : public pandora::Algorithm {
 public:
-    /**
-     *  @brief Default constructor
-     */
-    ShowerMipMergingAlgorithm();
+  /**
+   *  @brief Default constructor
+   */
+  ShowerMipMergingAlgorithm();
 
 private:
-    pandora::StatusCode Run();
-    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+  pandora::StatusCode Run();
+  pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-    float           m_canMergeMinMipFraction;           ///< The min mip fraction for clusters (flagged as photons) to be merged
-    float           m_canMergeMaxRms;                   ///< The max all hit fit rms for clusters (flagged as photons) to be merged
+  float m_canMergeMinMipFraction; ///< The min mip fraction for clusters (flagged as photons) to be merged
+  float m_canMergeMaxRms;         ///< The max all hit fit rms for clusters (flagged as photons) to be merged
 
-    unsigned int    m_minHitsInCluster;                 ///< Min number of calo hits in cluster
-    unsigned int    m_minOccupiedLayersInCluster;       ///< Min number of occupied layers in cluster
+  unsigned int m_minHitsInCluster;           ///< Min number of calo hits in cluster
+  unsigned int m_minOccupiedLayersInCluster; ///< Min number of occupied layers in cluster
 
-    unsigned int    m_nPointsToFit;                     ///< The number of occupied pseudolayers to use in fit to the end of the cluster
+  unsigned int m_nPointsToFit; ///< The number of occupied pseudolayers to use in fit to the end of the cluster
 
-    float           m_mipFractionCut;                   ///< The min mip fraction required to identify a cluster as mip-like
-    float           m_fitToAllHitsRmsCut;               ///< The max rms value (for the fit to all hits) to identify a cluster as mip-like
+  float m_mipFractionCut;     ///< The min mip fraction required to identify a cluster as mip-like
+  float m_fitToAllHitsRmsCut; ///< The max rms value (for the fit to all hits) to identify a cluster as mip-like
 
-    float           m_maxCentroidDifference;            ///< The max difference (for merging) between cluster outer and inner centroids
+  float m_maxCentroidDifference; ///< The max difference (for merging) between cluster outer and inner centroids
 
-    unsigned int    m_nFitProjectionLayers;             ///< The number of layers to project cluster fit for comparison with second cluster
-    float           m_maxDistanceToClosestHit;          ///< The max distance between projected cluster fit and hits in second cluster
-    float           m_maxDistanceToClosestCentroid;     ///< The max distance between projected cluster fit and second cluster centroid
+  unsigned int
+      m_nFitProjectionLayers;      ///< The number of layers to project cluster fit for comparison with second cluster
+  float m_maxDistanceToClosestHit; ///< The max distance between projected cluster fit and hits in second cluster
+  float m_maxDistanceToClosestCentroid; ///< The max distance between projected cluster fit and second cluster centroid
 };
 
 } // namespace lc_content

@@ -52,8 +52,10 @@ target_sources(${PROJECT_NAME} PUBLIC FILE_SET headers TYPE HEADERS BASE_DIRS "i
 if(TARGET PandoraPFA::PandoraSDK)
   target_link_libraries(${PROJECT_NAME} PUBLIC PandoraPFA::PandoraSDK)
 else()
-  include_directories(${PandoraSDK_INCLUDE_DIRS})
-  link_libraries(${PandoraSDK_LIBRARIES})
+  # SYSTEM: the headers of the external dependency are not maintained here, so
+  # diagnostics raised inside them must not fail a -Werror build of LCContent
+  target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PandoraSDK_INCLUDE_DIRS})
+  target_link_libraries(${PROJECT_NAME} PUBLIC ${PandoraSDK_LIBRARIES})
 endif()
 target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -64,10 +66,15 @@ if(PANDORA_MONITORING)
   if(TARGET PandoraPFA::PandoraMonitoring)
       target_link_libraries(${PROJECT_NAME} PUBLIC PandoraPFA::PandoraMonitoring)
   else()
-      include_directories(${PandoraMonitoring_INCLUDE_DIRS})
-      link_libraries(${PandoraMonitoring_LIBRARIES})
+      target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${PandoraMonitoring_INCLUDE_DIRS})
+      target_link_libraries(${PROJECT_NAME} PUBLIC ${PandoraMonitoring_LIBRARIES})
   endif()
   target_compile_definitions(${PROJECT_NAME} PRIVATE -DMONITORING ${PandoraMonitoring_DEFINITIONS})
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(test)
 endif()
 
 option(LCContent_BUILD_DOCS "Build documentation for ${PROJECT_NAME}" OFF)

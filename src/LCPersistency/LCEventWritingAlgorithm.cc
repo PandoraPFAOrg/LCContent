@@ -12,8 +12,7 @@
 
 using namespace pandora;
 
-namespace lc_content
-{
+namespace lc_content {
 
 LCEventWritingAlgorithm::LCEventWritingAlgorithm() : EventWritingAlgorithm() {}
 
@@ -23,17 +22,15 @@ LCEventWritingAlgorithm::~LCEventWritingAlgorithm() {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-StatusCode LCEventWritingAlgorithm::Initialize()
-{
-    const StatusCode statusCode(this->EventWritingAlgorithm::Initialize());
+StatusCode LCEventWritingAlgorithm::Initialize() {
+  const StatusCode statusCode(this->EventWritingAlgorithm::Initialize());
 
-    if (STATUS_CODE_SUCCESS != statusCode)
-        return statusCode;
+  if (STATUS_CODE_SUCCESS != statusCode)
+    return statusCode;
 
-    m_pEventFileWriter->SetFactory(new LCTrackFactory);
+  m_pEventFileWriter->SetFactory(new LCTrackFactory);
 
-    return STATUS_CODE_SUCCESS;
-
+  return STATUS_CODE_SUCCESS;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------

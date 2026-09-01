@@ -1,8 +1,8 @@
 /**
  *  @file   LCContent/include/LCPlugins/LCEnergyCorrectionPlugins.h
- * 
+ *
  *  @brief  Header file for the lc energy correction plugins class.
- * 
+ *
  *  $Log: $
  */
 #ifndef LC_ENERGY_CORRECTION_PLUGINS_H
@@ -12,156 +12,157 @@
 
 #include <string>
 
-namespace pandora { class CartesianVector; }
+namespace pandora {
+class CartesianVector;
+}
 
-namespace lc_content
-{
+namespace lc_content {
 
 /**
  *  @brief  LCEnergyCorrectionPlugins class
  */
-class LCEnergyCorrectionPlugins
-{
+class LCEnergyCorrectionPlugins {
 public:
+  /**
+   *  @brief  Record a registered theta-energy correction table for direct candidate-energy evaluation
+   *
+   *  @param  name the name/label associated with the energy correction plugin
+   *  @param  energyCorrectionType the energy correction type
+   *  @param  thetaBinEdges the theta bin edges for the 2D lookup
+   *  @param  energyBinEdges the energy bin edges for the 2D lookup
+   *  @param  scaleFactors the row-major correction factors for the 2D lookup
+   */
+  static void RegisterThetaEnergyCorrection(const std::string& name,
+                                            const pandora::EnergyCorrectionType energyCorrectionType,
+                                            const pandora::FloatVector& thetaBinEdges,
+                                            const pandora::FloatVector& energyBinEdges,
+                                            const pandora::FloatVector& scaleFactors);
+
+  /**
+   *  @brief  Evaluate the registered theta-energy correction for a supplied candidate energy
+   *
+   *  @param  energyCorrectionType the energy correction type
+   *  @param  direction the direction used to determine theta
+   *  @param  energy the candidate energy before theta-energy correction
+   *
+   *  @return corrected candidate energy, or the input energy if no matching theta-energy table is available
+   */
+  static float GetThetaEnergyCorrectedEnergy(const pandora::EnergyCorrectionType energyCorrectionType,
+                                             const pandora::CartesianVector& direction, const float energy);
+
+  /**
+   *   @brief  Correct cluster energy to account for non-linearities in calibration
+   */
+  class NonLinearityCorrection : public pandora::EnergyCorrectionPlugin {
+  public:
     /**
-     *  @brief  Record a registered theta-energy correction table for direct candidate-energy evaluation
+     *  @brief  Constructor
      *
-     *  @param  name the name/label associated with the energy correction plugin
-     *  @param  energyCorrectionType the energy correction type
+     *  @param  inputEnergyCorrectionPoints the input energy points for energy correction
+     *  @param  outputEnergyCorrectionPoints the output energy points for energy correction
+     */
+    NonLinearityCorrection(const pandora::FloatVector& inputEnergyCorrectionPoints,
+                           const pandora::FloatVector& outputEnergyCorrectionPoints);
+
+    /**
+     *  @brief  Constructor
+     *
      *  @param  thetaBinEdges the theta bin edges for the 2D lookup
      *  @param  energyBinEdges the energy bin edges for the 2D lookup
      *  @param  scaleFactors the row-major correction factors for the 2D lookup
      */
-    static void RegisterThetaEnergyCorrection(const std::string &name, const pandora::EnergyCorrectionType energyCorrectionType,
-        const pandora::FloatVector &thetaBinEdges, const pandora::FloatVector &energyBinEdges, const pandora::FloatVector &scaleFactors);
+    NonLinearityCorrection(const pandora::FloatVector& thetaBinEdges, const pandora::FloatVector& energyBinEdges,
+                           const pandora::FloatVector& scaleFactors);
 
+    pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster* const pCluster, float& correctedEnergy) const;
+
+  private:
+    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+
+    float GetCorrection(const float theta, const float energy) const;
+
+    bool m_useTwoDimensionalCorrection = false;         ///< Whether to use theta-energy binning
+    pandora::FloatVector m_inputEnergyCorrectionPoints; ///< The input energy points for energy correction
+    pandora::FloatVector m_thetaBinEdges;               ///< The theta bin edges for the 2D lookup
+    pandora::FloatVector m_energyBinEdges;              ///< The energy bin edges for the 2D lookup
+    pandora::FloatVector m_energyCorrections;           ///< The energy correction factors
+  };
+
+  /**
+   *   @brief  CleanCluster class. Correct cluster energy by searching for constituent calo hits with anomalously high
+   * energy. Corrections are made by examining the energy in adjacent layers of the cluster.
+   */
+  class CleanCluster : public pandora::EnergyCorrectionPlugin {
+  public:
     /**
-     *  @brief  Evaluate the registered theta-energy correction for a supplied candidate energy
+     *  @brief  Default constructor
+     */
+    CleanCluster();
+
+    pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster* const pCluster, float& correctedEnergy) const;
+
+  private:
+    /**
+     *  @brief  Get the sum of the hadronic energies of all calo hits in a specified layer of an ordered calo hit list
      *
-     *  @param  energyCorrectionType the energy correction type
-     *  @param  direction the direction used to determine theta
-     *  @param  energy the candidate energy before theta-energy correction
-     *
-     *  @return corrected candidate energy, or the input energy if no matching theta-energy table is available
+     *  @param  orderedCaloHitList the ordered calo hit list
+     *  @param  pseudoLayer the specified pseudolayer
      */
-    static float GetThetaEnergyCorrectedEnergy(const pandora::EnergyCorrectionType energyCorrectionType,
-        const pandora::CartesianVector &direction, const float energy);
+    float GetHadronicEnergyInLayer(const pandora::OrderedCaloHitList& orderedCaloHitList,
+                                   const unsigned int pseudoLayer) const;
 
+    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+
+    float m_minCleanHitEnergy;          ///< Min calo hit hadronic energy to consider cleaning hit/cluster
+    float m_minCleanHitEnergyFraction;  ///< Min fraction of cluster energy represented by hit to consider cleaning
+    float m_minCleanCorrectedHitEnergy; ///< Min value of new hit hadronic energy estimate after cleaning
+  };
+
+  /**
+   *   @brief  ScaleHotHadrons class. Correct cluster energy by searching for clusters with anomalously high mip
+   * energies per constituent calo hit. Corrections are made by scaling back the mean number of mips per calo hit.
+   */
+  class ScaleHotHadrons : public pandora::EnergyCorrectionPlugin {
+  public:
     /**
-     *   @brief  Correct cluster energy to account for non-linearities in calibration
+     *  @brief  Default constructor
      */
-    class NonLinearityCorrection : public pandora::EnergyCorrectionPlugin
-    {
-    public:
-        /**
-         *  @brief  Constructor
-         * 
-         *  @param  inputEnergyCorrectionPoints the input energy points for energy correction
-         *  @param  outputEnergyCorrectionPoints the output energy points for energy correction
-         */
-        NonLinearityCorrection(const pandora::FloatVector &inputEnergyCorrectionPoints, const pandora::FloatVector &outputEnergyCorrectionPoints);
+    ScaleHotHadrons();
 
-        /**
-         *  @brief  Constructor
-         *
-         *  @param  thetaBinEdges the theta bin edges for the 2D lookup
-         *  @param  energyBinEdges the energy bin edges for the 2D lookup
-         *  @param  scaleFactors the row-major correction factors for the 2D lookup
-         */
-        NonLinearityCorrection(const pandora::FloatVector &thetaBinEdges, const pandora::FloatVector &energyBinEdges,
-            const pandora::FloatVector &scaleFactors);
+    pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster* const pCluster, float& correctedEnergy) const;
 
-        pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const;
+  private:
+    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-    private:
-        pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
+    unsigned int m_minHitsForHotHadron;    ///< Min number of hits in a hot hadron candidate cluster
+    unsigned int m_maxHitsForHotHadron;    ///< Max number of hits in a hot hadron candidate cluster
+    unsigned int m_hotHadronInnerLayerCut; ///< Cut 1 of 3 (must fail all for rejection): Min inner layer for hot hadron
+    float m_hotHadronMipFractionCut;   ///< Cut 2 of 3 (must fail all for rejection): Min mip fraction for hot hadron
+    unsigned int m_hotHadronNHitsCut;  ///< Cut 3 of 3 (must fail all for rejection): Max number of hits for hot hadron
+    float m_hotHadronMipsPerHit;       ///< Min number of mips per hit for a hot hadron cluster
+    float m_scaledHotHadronMipsPerHit; ///< Scale factor (new mips per hit value) to correct hot hadron energies
+  };
 
-        float GetCorrection(const float theta, const float energy) const;
-
-        bool                    m_useTwoDimensionalCorrection = false; ///< Whether to use theta-energy binning
-        pandora::FloatVector m_inputEnergyCorrectionPoints; ///< The input energy points for energy correction
-        pandora::FloatVector m_thetaBinEdges;               ///< The theta bin edges for the 2D lookup
-        pandora::FloatVector m_energyBinEdges;              ///< The energy bin edges for the 2D lookup
-        pandora::FloatVector m_energyCorrections;           ///< The energy correction factors
-    };
-
+  /**
+   *   @brief  MuonCoilCorrection class. Addresses issue of energy loss in uninstrumented coil region.
+   */
+  class MuonCoilCorrection : public pandora::EnergyCorrectionPlugin {
+  public:
     /**
-     *   @brief  CleanCluster class. Correct cluster energy by searching for constituent calo hits with anomalously high energy.
-     *           Corrections are made by examining the energy in adjacent layers of the cluster.
+     *  @brief  Default constructor
      */
-    class CleanCluster : public pandora::EnergyCorrectionPlugin
-    {
-    public:
-        /**
-         *  @brief  Default constructor
-         */
-        CleanCluster();
+    MuonCoilCorrection();
 
-        pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const;
+    pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster* const pCluster, float& correctedEnergy) const;
 
-    private:
-        /**
-         *  @brief  Get the sum of the hadronic energies of all calo hits in a specified layer of an ordered calo hit list
-         * 
-         *  @param  orderedCaloHitList the ordered calo hit list
-         *  @param  pseudoLayer the specified pseudolayer
-         */
-        float GetHadronicEnergyInLayer(const pandora::OrderedCaloHitList &orderedCaloHitList, const unsigned int pseudoLayer) const;
+  private:
+    pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-        pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
-
-        float           m_minCleanHitEnergy;                ///< Min calo hit hadronic energy to consider cleaning hit/cluster
-        float           m_minCleanHitEnergyFraction;        ///< Min fraction of cluster energy represented by hit to consider cleaning
-        float           m_minCleanCorrectedHitEnergy;       ///< Min value of new hit hadronic energy estimate after cleaning
-    };
-
-    /**
-     *   @brief  ScaleHotHadrons class. Correct cluster energy by searching for clusters with anomalously high mip energies per
-     *           constituent calo hit. Corrections are made by scaling back the mean number of mips per calo hit.
-     */
-    class ScaleHotHadrons : public pandora::EnergyCorrectionPlugin
-    {
-    public:
-        /**
-         *  @brief  Default constructor
-         */
-        ScaleHotHadrons();
-
-        pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const;
-
-    private:
-        pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
-
-        unsigned int    m_minHitsForHotHadron;             ///< Min number of hits in a hot hadron candidate cluster
-        unsigned int    m_maxHitsForHotHadron;             ///< Max number of hits in a hot hadron candidate cluster
-        unsigned int    m_hotHadronInnerLayerCut;          ///< Cut 1 of 3 (must fail all for rejection): Min inner layer for hot hadron
-        float           m_hotHadronMipFractionCut;         ///< Cut 2 of 3 (must fail all for rejection): Min mip fraction for hot hadron
-        unsigned int    m_hotHadronNHitsCut;               ///< Cut 3 of 3 (must fail all for rejection): Max number of hits for hot hadron
-        float           m_hotHadronMipsPerHit;             ///< Min number of mips per hit for a hot hadron cluster
-        float           m_scaledHotHadronMipsPerHit;       ///< Scale factor (new mips per hit value) to correct hot hadron energies
-    };
-
-    /**
-     *   @brief  MuonCoilCorrection class. Addresses issue of energy loss in uninstrumented coil region.
-     */
-    class MuonCoilCorrection : public pandora::EnergyCorrectionPlugin
-    {
-    public:
-        /**
-         *  @brief  Default constructor
-         */
-        MuonCoilCorrection();
-
-        pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster *const pCluster, float &correctedEnergy) const;
-
-    private:
-        pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
-
-        float           m_muonHitEnergy;                    ///< The energy for a digital muon calorimeter hit, units GeV
-        float           m_coilEnergyLossCorrection;         ///< Energy correction due to missing energy deposited in coil, units GeV
-        unsigned int    m_minMuonHitsInInnerLayer;          ///< Min muon hits in muon inner layer to correct charged cluster energy
-        float           m_coilEnergyCorrectionChi;          ///< Track-cluster chi value used to assess need for coil energy correction
-    };
+    float m_muonHitEnergy;                  ///< The energy for a digital muon calorimeter hit, units GeV
+    float m_coilEnergyLossCorrection;       ///< Energy correction due to missing energy deposited in coil, units GeV
+    unsigned int m_minMuonHitsInInnerLayer; ///< Min muon hits in muon inner layer to correct charged cluster energy
+    float m_coilEnergyCorrectionChi;        ///< Track-cluster chi value used to assess need for coil energy correction
+  };
 };
 
 } // namespace lc_content
