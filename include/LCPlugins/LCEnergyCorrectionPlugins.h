@@ -24,6 +24,69 @@ namespace lc_content {
 class LCEnergyCorrectionPlugins {
 public:
   /**
+   *  @brief  A table of energy correction factors binned in theta and energy
+   */
+  class ThetaEnergyTable {
+  public:
+    /**
+     *  @brief  Default constructor, yielding an uninitialised table that applies no correction
+     */
+    ThetaEnergyTable() = default;
+
+    /**
+     *  @brief  Constructor
+     *
+     *  @param  thetaBinEdges the theta bin edges, which must be strictly increasing
+     *  @param  energyBinEdges the energy bin edges, which must be strictly increasing
+     *  @param  scaleFactors the row-major correction factors, nThetaBins * nEnergyBins of them
+     *
+     *  @throw  StatusCodeException if the binning and scale factors are not self-consistent
+     */
+    ThetaEnergyTable(const pandora::FloatVector& thetaBinEdges, const pandora::FloatVector& energyBinEdges,
+                     const pandora::FloatVector& scaleFactors);
+
+    /**
+     *  @brief  Whether the table holds a usable binning
+     */
+    bool IsInitialized() const;
+
+    /**
+     *  @brief  Get the correction factor for a supplied theta and energy
+     *
+     *  @param  theta the polar angle
+     *  @param  energy the candidate energy
+     *
+     *  @return the correction factor, or unity if either value lies outside the binning
+     */
+    float GetCorrection(const float theta, const float energy) const;
+
+    /**
+     *  @brief  Whether a supplied binning and set of scale factors are self-consistent
+     *
+     *  @param  thetaBinEdges the theta bin edges
+     *  @param  energyBinEdges the energy bin edges
+     *  @param  scaleFactors the row-major correction factors
+     */
+    static bool IsValid(const pandora::FloatVector& thetaBinEdges, const pandora::FloatVector& energyBinEdges,
+                        const pandora::FloatVector& scaleFactors);
+
+  private:
+    /**
+     *  @brief  Find the index of the bin containing a supplied value, or -1 if it lies outside the binning
+     */
+    static int FindBin(const pandora::FloatVector& edges, const float value);
+
+    /**
+     *  @brief  Whether a supplied set of values is strictly increasing
+     */
+    static bool IsStrictlyIncreasing(const pandora::FloatVector& values);
+
+    pandora::FloatVector m_thetaBinEdges;  ///< The theta bin edges
+    pandora::FloatVector m_energyBinEdges; ///< The energy bin edges
+    pandora::FloatVector m_scaleFactors;   ///< The row-major correction factors
+  };
+
+  /**
    *  @brief  Record a registered theta-energy correction table for direct candidate-energy evaluation
    *
    *  @param  name the name/label associated with the energy correction plugin
@@ -79,13 +142,9 @@ public:
   private:
     pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle);
 
-    float GetCorrection(const float theta, const float energy) const;
-
-    bool m_useTwoDimensionalCorrection = false;         ///< Whether to use theta-energy binning
     pandora::FloatVector m_inputEnergyCorrectionPoints; ///< The input energy points for energy correction
-    pandora::FloatVector m_thetaBinEdges;               ///< The theta bin edges for the 2D lookup
-    pandora::FloatVector m_energyBinEdges;              ///< The energy bin edges for the 2D lookup
     pandora::FloatVector m_energyCorrections;           ///< The energy correction factors
+    ThetaEnergyTable m_thetaEnergyTable;                ///< The theta-energy table, if this is a 2D correction
   };
 
   /**
