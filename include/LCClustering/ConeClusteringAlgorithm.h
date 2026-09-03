@@ -203,6 +203,8 @@ private:
 
   bool m_shouldUseOnlyECalHits; ///< Whether to only use ecal hits in the clustering algorithm
   bool m_shouldUseIsolatedHits; ///< Whether to use isolated hits in the clustering algorithm
+  bool m_shouldExcludeBIBHits;  ///< Whether to exclude hits flagged as possible beam-induced background from the
+                                ///< clustering algorithm
 
   unsigned int
       m_layersToStepBackFine; ///< Number of layers to step back when associating a fine granularity hit to clusters

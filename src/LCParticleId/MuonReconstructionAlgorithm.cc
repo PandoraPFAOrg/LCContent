@@ -17,13 +17,13 @@ using namespace pandora;
 namespace lc_content {
 
 MuonReconstructionAlgorithm::MuonReconstructionAlgorithm()
-    : m_shouldClusterIsolatedHits(false), m_maxClusterCaloHits(30), m_minClusterOccupiedLayers(8),
-      m_minClusterLayerSpan(8), m_nClusterLayersToFit(100), m_maxClusterFitChi2(4.f), m_maxDistanceToTrack(200.f),
-      m_minTrackCandidateEnergy(7.f), m_minHelixClusterCosAngle(0.98f), m_nExpectedTracksPerCluster(1),
-      m_nExpectedParentTracks(1), m_minHelixCaloHitCosAngle(0.95f), m_region1GenericDistance(3.f),
-      m_region2GenericDistance(6.f), m_isolatedMinRegion1Hits(1), m_isolatedMaxRegion2Hits(0),
-      m_maxGenericDistance(6.f), m_isolatedMaxGenericDistance(3.f), m_replaceCurrentClusterList(false),
-      m_replaceCurrentPfoList(false) {}
+    : m_shouldClusterIsolatedHits(false), m_shouldExcludeBIBHits(false), m_maxClusterCaloHits(30),
+      m_minClusterOccupiedLayers(8), m_minClusterLayerSpan(8), m_nClusterLayersToFit(100), m_maxClusterFitChi2(4.f),
+      m_maxDistanceToTrack(200.f), m_minTrackCandidateEnergy(7.f), m_minHelixClusterCosAngle(0.98f),
+      m_nExpectedTracksPerCluster(1), m_nExpectedParentTracks(1), m_minHelixCaloHitCosAngle(0.95f),
+      m_region1GenericDistance(3.f), m_region2GenericDistance(6.f), m_isolatedMinRegion1Hits(1),
+      m_isolatedMaxRegion2Hits(0), m_maxGenericDistance(6.f), m_isolatedMaxGenericDistance(3.f),
+      m_replaceCurrentClusterList(false), m_replaceCurrentPfoList(false) {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -270,6 +270,9 @@ StatusCode MuonReconstructionAlgorithm::AddCaloHits(const ClusterList* const pMu
 
         if ((!m_shouldClusterIsolatedHits && pCaloHit->IsIsolated()) ||
             !PandoraContentApi::IsAvailable(*this, pCaloHit))
+          continue;
+
+        if (m_shouldExcludeBIBHits && pCaloHit->IsPossibleBIB())
           continue;
 
         const CartesianVector& caloHitPosition(pCaloHit->GetPositionVector());
@@ -520,6 +523,9 @@ StatusCode MuonReconstructionAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
   PANDORA_RETURN_RESULT_IF_AND_IF(
       STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
       XmlHelper::ReadValue(xmlHandle, "ShouldClusterIsolatedHits", m_shouldClusterIsolatedHits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "ShouldExcludeBIBHits", m_shouldExcludeBIBHits));
 
   // Cluster-track association
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,

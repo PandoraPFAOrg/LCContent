@@ -20,8 +20,9 @@ namespace lc_content {
 
 ConeClusteringAlgorithm::ConeClusteringAlgorithm()
     : m_clusterSeedStrategy(2), m_shouldUseOnlyECalHits(false), m_shouldUseIsolatedHits(false),
-      m_layersToStepBackFine(3), m_layersToStepBackCoarse(3), m_clusterFormationStrategy(0), m_genericDistanceCut(1.f),
-      m_minHitTrackCosAngle(0.f), m_minHitClusterCosAngle(0.f), m_shouldUseTrackSeed(true), m_trackSeedCutOffLayer(0),
+      m_shouldExcludeBIBHits(false), m_layersToStepBackFine(3), m_layersToStepBackCoarse(3),
+      m_clusterFormationStrategy(0), m_genericDistanceCut(1.f), m_minHitTrackCosAngle(0.f),
+      m_minHitClusterCosAngle(0.f), m_shouldUseTrackSeed(true), m_trackSeedCutOffLayer(0),
       m_shouldFollowInitialDirection(false), m_sameLayerPadWidthsFine(2.8f), m_sameLayerPadWidthsCoarse(1.8f),
       m_coneApproachMaxSeparation2(1000.f * 1000.f), m_tanConeAngleFine(0.3f), m_tanConeAngleCoarse(0.5f),
       m_additionalPadWidthsFine(2.5f), m_additionalPadWidthsCoarse(2.5f), m_maxClusterDirProjection(200.f),
@@ -68,6 +69,7 @@ StatusCode ConeClusteringAlgorithm::Run() {
 
       if ((m_shouldUseIsolatedHits || !pCaloHit->IsIsolated()) &&
           (!m_shouldUseOnlyECalHits || (ECAL == pCaloHit->GetHitType())) &&
+          (!m_shouldExcludeBIBHits || !pCaloHit->IsPossibleBIB()) &&
           (PandoraContentApi::IsAvailable(*this, pCaloHit))) {
         relevantCaloHits.push_back(pCaloHit);
       }
@@ -768,6 +770,9 @@ StatusCode ConeClusteringAlgorithm::ReadSettings(const TiXmlHandle xmlHandle) {
 
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
                                   XmlHelper::ReadValue(xmlHandle, "ShouldUseIsolatedHits", m_shouldUseIsolatedHits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "ShouldExcludeBIBHits", m_shouldExcludeBIBHits));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
                                   XmlHelper::ReadValue(xmlHandle, "LayersToStepBackFine", m_layersToStepBackFine));

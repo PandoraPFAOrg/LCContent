@@ -11,6 +11,9 @@
 #include "LCUtility/CaloHitPreparationAlgorithm.h"
 #include "LCUtility/KDTreeLinkerAlgoT.h"
 
+#include <fstream>
+#include <sstream>
+
 using namespace pandora;
 
 namespace lc_content {
@@ -19,7 +22,10 @@ CaloHitPreparationAlgorithm::CaloHitPreparationAlgorithm()
     : m_caloHitMaxSeparation2(100.f * 100.f), m_isolationCaloHitMaxSeparation2(1000.f * 1000.f), m_isolationNLayers(2),
       m_isolationCutDistanceFine2(25.f * 25.f), m_isolationCutDistanceCoarse2(200.f * 200.f),
       m_isolationSearchSafetyFactor(2.f), m_isolationMaxNearbyHits(2), m_mipLikeMipCut(5.f), m_mipNCellsForNearbyHit(2),
-      m_mipMaxNearbyHits(1), m_hitNodes4D(new std::vector<HitKDNode4D>), m_hitsKdTree4D(new HitKDTree4D) {}
+      m_mipMaxNearbyHits(1), m_bibNLayers(2), m_bibCaloHitMaxSeparationSquared(1000.f * 1000.f),
+      m_bibCutDistanceSquared(200.f * 200.f), m_bibSearchSafetyFactor(2.f), m_bibTimingCutEnabled(false),
+      m_bibTimingWindowLow(0.f), m_bibTimingWindowHigh(0.f), m_hitNodes4D(new std::vector<HitKDNode4D>),
+      m_hitsKdTree4D(new HitKDTree4D) {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -127,6 +133,46 @@ void CaloHitPreparationAlgorithm::CalculateCaloHitProperties(const CaloHit* cons
     PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=,
                             PandoraContentApi::CaloHit::AlterMetadata(*this, pCaloHit, metadata));
   }
+
+  // IsPossibleBIB flag: nearby energy density below the per-pseudolayer cut loaded for this
+  // hit's subdetector and region, and/or (when enabled) a hit time outside the accepted window.
+  // A zero cut can never flag, so the neighbourhood sum is skipped in that case.
+  bool isPossibleBIB = false;
+
+  const float bibEnergyDensityCut(this->GetBIBEnergyDensityCut(pCaloHit));
+
+  if (bibEnergyDensityCut > 0.f) {
+    const unsigned int bibMaxLayer(pseudoLayer + m_bibNLayers);
+    const unsigned int bibMinLayer((pseudoLayer < m_bibNLayers) ? 0 : pseudoLayer - m_bibNLayers);
+
+    float bibNearbyEnergy = 0.f;
+
+    for (unsigned int iPseudoLayer = bibMinLayer; iPseudoLayer <= bibMaxLayer; ++iPseudoLayer) {
+      if (orderedCaloHitList.end() == orderedCaloHitList.find(iPseudoLayer))
+        continue;
+
+      bibNearbyEnergy += this->BIBSumNearbyEnergy(iPseudoLayer, pCaloHit);
+    }
+
+    // Density in GeV/mm^2/layer: summed energy over the sampled neighbourhood, normalized to its
+    // transverse area and the number of pseudolayers examined
+    const unsigned int bibNSampledLayers(bibMaxLayer - bibMinLayer + 1);
+    const float bibEnergyDensity(
+        bibNearbyEnergy / (static_cast<float>(M_PI) * m_bibCutDistanceSquared * static_cast<float>(bibNSampledLayers)));
+
+    isPossibleBIB = (bibEnergyDensity < bibEnergyDensityCut);
+  }
+
+  if (m_bibTimingCutEnabled &&
+      ((pCaloHit->GetTime() < m_bibTimingWindowLow) || (pCaloHit->GetTime() > m_bibTimingWindowHigh)))
+    isPossibleBIB = true;
+
+  if (isPossibleBIB) {
+    PandoraContentApi::CaloHit::Metadata metadata;
+    metadata.m_isPossibleBIB = true;
+    PANDORA_THROW_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                            PandoraContentApi::CaloHit::AlterMetadata(*this, pCaloHit, metadata));
+  }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -227,6 +273,104 @@ unsigned int CaloHitPreparationAlgorithm::MipCountNearbyHits(unsigned int search
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
+float CaloHitPreparationAlgorithm::BIBSumNearbyEnergy(unsigned int searchLayer, const CaloHit* const pCaloHit) {
+  const CartesianVector& positionVector(pCaloHit->GetPositionVector());
+  const float positionMagnitudeSquared(positionVector.GetMagnitudeSquared());
+
+  float nearbyEnergy = 0.f;
+
+  // construct the kd tree search
+  CaloHitList nearby_hits;
+  const float searchDistance(m_bibSearchSafetyFactor * std::sqrt(m_bibCutDistanceSquared));
+  KDTreeTesseract searchRegionHits =
+      build_4d_kd_search_region(pCaloHit, searchDistance, searchDistance, searchDistance, searchLayer);
+
+  std::vector<HitKDNode4D> found;
+  m_hitsKdTree4D->search(searchRegionHits, found);
+
+  for (const auto& hit : found) {
+    nearby_hits.push_back(hit.data);
+  }
+
+  for (CaloHitList::const_iterator iter = nearby_hits.begin(), iterEnd = nearby_hits.end(); iter != iterEnd; ++iter) {
+    // The hit's own energy is deliberately excluded: including it lets the most
+    // energetic BIB hits lift themselves above the cut, notably weakening the veto
+    if (pCaloHit == *iter)
+      continue;
+
+    const CartesianVector positionDifference(positionVector - (*iter)->GetPositionVector());
+    const CartesianVector crossProduct(positionVector.GetCrossProduct(positionDifference));
+
+    if (positionDifference.GetMagnitudeSquared() > m_bibCaloHitMaxSeparationSquared)
+      continue;
+
+    if ((crossProduct.GetMagnitudeSquared() / positionMagnitudeSquared) < m_bibCutDistanceSquared)
+      nearbyEnergy += (*iter)->GetElectromagneticEnergy();
+  }
+
+  return nearbyEnergy;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+float CaloHitPreparationAlgorithm::GetBIBEnergyDensityCut(const CaloHit* const pCaloHit) const {
+  const bool isEndcap(ENDCAP == pCaloHit->GetHitRegion());
+  const FloatVector* pCuts(NULL);
+
+  switch (pCaloHit->GetHitType()) {
+  case ECAL:
+    pCuts = isEndcap ? &m_bibCutsECalEndcap : &m_bibCutsECalBarrel;
+    break;
+  case HCAL:
+    pCuts = isEndcap ? &m_bibCutsHCalEndcap : &m_bibCutsHCalBarrel;
+    break;
+  default:
+    return 0.f;
+  }
+
+  const unsigned int pseudoLayer(pCaloHit->GetPseudoLayer());
+  return (pseudoLayer < pCuts->size()) ? (*pCuts)[pseudoLayer] : 0.f;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+StatusCode CaloHitPreparationAlgorithm::LoadBIBCuts(const std::string& fileName, FloatVector& cuts) const {
+  if (fileName.empty())
+    return STATUS_CODE_SUCCESS;
+
+  std::ifstream file(fileName.c_str());
+
+  if (!file.is_open()) {
+    std::cout << "CaloHitPreparationAlgorithm: could not open BIB cuts file " << fileName << std::endl;
+    return STATUS_CODE_NOT_FOUND;
+  }
+
+  std::string line;
+
+  while (std::getline(file, line)) {
+    const std::size_t comment(line.find('#'));
+
+    if (std::string::npos != comment)
+      line.resize(comment);
+
+    std::istringstream parser(line);
+    unsigned int pseudoLayer(0);
+    float cut(0.f);
+
+    if (!(parser >> pseudoLayer >> cut))
+      continue;
+
+    if (cuts.size() <= pseudoLayer)
+      cuts.resize(pseudoLayer + 1, 0.f);
+
+    cuts[pseudoLayer] = cut;
+  }
+
+  return STATUS_CODE_SUCCESS;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 StatusCode CaloHitPreparationAlgorithm::ReadSettings(const TiXmlHandle xmlHandle) {
   float caloHitMaxSeparation(std::sqrt(m_caloHitMaxSeparation2));
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
@@ -269,6 +413,51 @@ StatusCode CaloHitPreparationAlgorithm::ReadSettings(const TiXmlHandle xmlHandle
 
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
                                   XmlHelper::ReadValue(xmlHandle, "MipMaxNearbyHits", m_mipMaxNearbyHits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBNLayers", m_bibNLayers));
+
+  float bibCaloHitMaxSeparation(std::sqrt(m_bibCaloHitMaxSeparationSquared));
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBCaloHitMaxSeparation", bibCaloHitMaxSeparation));
+  m_bibCaloHitMaxSeparationSquared = bibCaloHitMaxSeparation * bibCaloHitMaxSeparation;
+
+  float bibCutDistance(std::sqrt(m_bibCutDistanceSquared));
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBCutDistance", bibCutDistance));
+  m_bibCutDistanceSquared = bibCutDistance * bibCutDistance;
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBSearchSafetyFactor", m_bibSearchSafetyFactor));
+
+  // Per-pseudolayer energy density cuts, one optional file per subdetector and region; a
+  // subdetector/region without a file is disabled (no hits there are ever flagged)
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBCutsFileECalBarrel", m_bibCutsFileECalBarrel));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBCutsFileECalEndcap", m_bibCutsFileECalEndcap));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBCutsFileHCalBarrel", m_bibCutsFileHCalBarrel));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBCutsFileHCalEndcap", m_bibCutsFileHCalEndcap));
+
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->LoadBIBCuts(m_bibCutsFileECalBarrel, m_bibCutsECalBarrel));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->LoadBIBCuts(m_bibCutsFileECalEndcap, m_bibCutsECalEndcap));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->LoadBIBCuts(m_bibCutsFileHCalBarrel, m_bibCutsHCalBarrel));
+  PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=, this->LoadBIBCuts(m_bibCutsFileHCalEndcap, m_bibCutsHCalEndcap));
+
+  // Optional timing window: when enabled, a hit with time outside [low, high] ns is flagged
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBTimingCutEnabled", m_bibTimingCutEnabled));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBTimingWindowLow", m_bibTimingWindowLow));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "BIBTimingWindowHigh", m_bibTimingWindowHigh));
 
   return STATUS_CODE_SUCCESS;
 }

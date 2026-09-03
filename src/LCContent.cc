@@ -63,6 +63,7 @@
 #include "LCReclustering/TrackDrivenAssociationAlg.h"
 #include "LCReclustering/TrackDrivenMergingAlg.h"
 
+#include "LCTopologicalAssociation/BIBHitMergingAlgorithm.h"
 #include "LCTopologicalAssociation/BackscatteredTracks2Algorithm.h"
 #include "LCTopologicalAssociation/BackscatteredTracksAlgorithm.h"
 #include "LCTopologicalAssociation/BrokenTracksAlgorithm.h"
@@ -96,87 +97,89 @@
 
 #include "LCContent.h"
 
-#define LC_ALGORITHM_LIST(d)                                                                                               \
-  d("CheatingClusterCleaning", CheatingClusterCleaningAlgorithm) d("CheatingParticleID", CheatingParticleIDAlgorithm) d(   \
-      "CheatingTrackToClusterMatching",                                                                                    \
-      CheatingTrackToClusterMatching) d("PerfectClustering",                                                               \
-                                        PerfectClusteringAlgorithm) d("PerfectFragmentRemoval",                            \
-                                                                      PerfectFragmentRemovalAlgorithm)                     \
-      d("PerfectParticleFlow", PerfectParticleFlowAlgorithm) d("ClusteringParent", ClusteringParentAlgorithm) d(           \
-          "ConeClustering", ConeClusteringAlgorithm) d("ForcedClustering",                                                 \
-                                                       ForcedClusteringAlgorithm) d("BeamHaloMuonRemoval",                 \
-                                                                                    BeamHaloMuonRemovalAlgorithm)          \
-          d("MainFragmentRemoval", MainFragmentRemovalAlgorithm) d("MergeSplitPhotons", MergeSplitPhotonsAlgorithm) d(     \
-              "NeutralFragmentRemoval",                                                                                    \
-              NeutralFragmentRemovalAlgorithm) d("PhotonFragmentMerging",                                                  \
-                                                 PhotonFragmentMergingAlgorithm) d("PhotonFragmentRemoval",                \
-                                                                                   PhotonFragmentRemovalAlgorithm)         \
-              d("RecoPhotonFragmentMerging", RecoPhotonFragmentMergingAlgorithm) d(                                        \
-                  "ClusterComparison",                                                                                     \
-                  ClusterComparisonAlgorithm) d("DumpPfosMonitoring",                                                      \
-                                                DumpPfosMonitoringAlgorithm) d("EfficiencyMonitoring",                     \
-                                                                               EfficiencyMonitoringAlgorithm)              \
-                  d("VisualMonitoring", VisualMonitoringAlgorithm) d("FinalParticleId", FinalParticleIdAlgorithm) d(       \
-                      "MuonReconstruction",                                                                                \
-                      MuonReconstructionAlgorithm) d("PhotonReconstruction",                                               \
-                                                     PhotonReconstructionAlgorithm) d("PhotonRecovery",                    \
-                                                                                      PhotonRecoveryAlgorithm)             \
-                      d("PhotonSplitting", PhotonSplittingAlgorithm) d("LCEventReading", LCEventReadingAlgorithm) d(       \
-                          "LCEventWriting",                                                                                \
-                          LCEventWritingAlgorithm) d("CLICPfoSelection",                                                   \
-                                                     CLICPfoSelectionAlgorithm) d("PfoCreation", PfoCreationAlgorithm)     \
-                          d("PfoCreationParent", PfoCreationParentAlgorithm) d("V0PfoCreation", V0PfoCreationAlgorithm) d( \
-                              "ExitingTrack",                                                                              \
-                              ExitingTrackAlg) d("ForceSplitTrackAssociations",                                            \
-                                                 ForceSplitTrackAssociationsAlg) d("ResolveTrackAssociations",             \
-                                                                                   ResolveTrackAssociationsAlg)            \
-                              d("SplitMergedClusters", SplitMergedClustersAlg) d(                                          \
-                                  "SplitTrackAssociations",                                                                \
-                                  SplitTrackAssociationsAlg) d("TrackDrivenAssociation",                                   \
-                                                               TrackDrivenAssociationAlg) d("TrackDrivenMerging",          \
-                                                                                            TrackDrivenMergingAlg)         \
-                                  d("BackscatteredTracks", BackscatteredTracksAlgorithm) d(                                \
-                                      "BackscatteredTracks2", BackscatteredTracks2Algorithm) d("BrokenTracks",             \
-                                                                                               BrokenTracksAlgorithm)      \
-                                      d("ConeBasedMerging", ConeBasedMergingAlgorithm) d(                                  \
-                                          "HighEnergyPhotonRecovery",                                                      \
-                                          HighEnergyPhotonRecoveryAlgorithm) d("IsolatedHitMerging",                       \
-                                                                               IsolatedHitMergingAlgorithm)                \
-                                          d("LoopingTracks", LoopingTracksAlgorithm) d(                                    \
-                                              "MipPhotonSeparation",                                                       \
-                                              MipPhotonSeparationAlgorithm) d("MuonPhotonSeparation",                      \
-                                                                              MuonPhotonSeparationAlgorithm)               \
-                                              d("MuonClusterAssociation", MuonClusterAssociationAlgorithm) d(              \
-                                                  "ProximityBasedMerging",                                                 \
-                                                  ProximityBasedMergingAlgorithm) d("ShowerMipMerging",                    \
-                                                                                    ShowerMipMergingAlgorithm)             \
-                                                  d("ShowerMipMerging2", ShowerMipMerging2Algorithm) d(                    \
-                                                      "ShowerMipMerging3",                                                 \
-                                                      ShowerMipMerging3Algorithm) d("ShowerMipMerging4",                   \
-                                                                                    ShowerMipMerging4Algorithm)            \
-                                                      d("SoftClusterMerging", SoftClusterMergingAlgorithm) d(              \
-                                                          "TopologicalAssociationParent",                                  \
-                                                          TopologicalAssociationParentAlgorithm)                           \
-                                                          d("LoopingTrackAssociation",                                     \
-                                                            LoopingTrackAssociationAlgorithm) d("TrackRecovery",           \
-                                                                                                TrackRecoveryAlgorithm)    \
-                                                              d("TrackRecoveryHelix", TrackRecoveryHelixAlgorithm) d(      \
-                                                                  "TrackRecoveryInteractions",                             \
-                                                                  TrackRecoveryInteractionsAlgorithm)                      \
-                                                                  d("TrackClusterAssociation",                             \
-                                                                    TrackClusterAssociationAlgorithm)                      \
-                                                                      d("CaloHitPreparation",                              \
-                                                                        CaloHitPreparationAlgorithm)                       \
-                                                                          d("ClusterPreparation",                          \
-                                                                            ClusterPreparationAlgorithm)                   \
-                                                                              d("EventPreparation",                        \
-                                                                                EventPreparationAlgorithm)                 \
-                                                                                  d("PfoPreparation",                      \
-                                                                                    PfoPreparationAlgorithm)               \
-                                                                                      d("TrackPreparation",                \
-                                                                                        TrackPreparationAlgorithm)         \
-                                                                                          d("TrainingSoftwareCompensa"     \
-                                                                                            "tion",                        \
+#define LC_ALGORITHM_LIST(d)                                                                                                  \
+  d("CheatingClusterCleaning", CheatingClusterCleaningAlgorithm) d("CheatingParticleID", CheatingParticleIDAlgorithm) d(      \
+      "CheatingTrackToClusterMatching",                                                                                       \
+      CheatingTrackToClusterMatching) d("PerfectClustering",                                                                  \
+                                        PerfectClusteringAlgorithm) d("PerfectFragmentRemoval",                               \
+                                                                      PerfectFragmentRemovalAlgorithm)                        \
+      d("PerfectParticleFlow", PerfectParticleFlowAlgorithm) d("ClusteringParent", ClusteringParentAlgorithm) d(              \
+          "ConeClustering", ConeClusteringAlgorithm) d("ForcedClustering",                                                    \
+                                                       ForcedClusteringAlgorithm) d("BeamHaloMuonRemoval",                    \
+                                                                                    BeamHaloMuonRemovalAlgorithm)             \
+          d("MainFragmentRemoval", MainFragmentRemovalAlgorithm) d("MergeSplitPhotons", MergeSplitPhotonsAlgorithm) d(        \
+              "NeutralFragmentRemoval",                                                                                       \
+              NeutralFragmentRemovalAlgorithm) d("PhotonFragmentMerging",                                                     \
+                                                 PhotonFragmentMergingAlgorithm) d("PhotonFragmentRemoval",                   \
+                                                                                   PhotonFragmentRemovalAlgorithm)            \
+              d("RecoPhotonFragmentMerging", RecoPhotonFragmentMergingAlgorithm) d(                                           \
+                  "ClusterComparison",                                                                                        \
+                  ClusterComparisonAlgorithm) d("DumpPfosMonitoring",                                                         \
+                                                DumpPfosMonitoringAlgorithm) d("EfficiencyMonitoring",                        \
+                                                                               EfficiencyMonitoringAlgorithm)                 \
+                  d("VisualMonitoring", VisualMonitoringAlgorithm) d("FinalParticleId", FinalParticleIdAlgorithm) d(          \
+                      "MuonReconstruction",                                                                                   \
+                      MuonReconstructionAlgorithm) d("PhotonReconstruction",                                                  \
+                                                     PhotonReconstructionAlgorithm) d("PhotonRecovery",                       \
+                                                                                      PhotonRecoveryAlgorithm)                \
+                      d("PhotonSplitting", PhotonSplittingAlgorithm) d("LCEventReading", LCEventReadingAlgorithm) d(          \
+                          "LCEventWriting",                                                                                   \
+                          LCEventWritingAlgorithm) d("CLICPfoSelection",                                                      \
+                                                     CLICPfoSelectionAlgorithm) d("PfoCreation", PfoCreationAlgorithm)        \
+                          d("PfoCreationParent", PfoCreationParentAlgorithm) d("V0PfoCreation", V0PfoCreationAlgorithm) d(    \
+                              "ExitingTrack",                                                                                 \
+                              ExitingTrackAlg) d("ForceSplitTrackAssociations",                                               \
+                                                 ForceSplitTrackAssociationsAlg) d("ResolveTrackAssociations",                \
+                                                                                   ResolveTrackAssociationsAlg)               \
+                              d("SplitMergedClusters", SplitMergedClustersAlg) d(                                             \
+                                  "SplitTrackAssociations",                                                                   \
+                                  SplitTrackAssociationsAlg) d("TrackDrivenAssociation",                                      \
+                                                               TrackDrivenAssociationAlg) d("TrackDrivenMerging",             \
+                                                                                            TrackDrivenMergingAlg)            \
+                                  d("BIBHitMerging", BIBHitMergingAlgorithm) d(                                               \
+                                      "BackscatteredTracks",                                                                  \
+                                      BackscatteredTracksAlgorithm) d("BackscatteredTracks2",                                 \
+                                                                      BackscatteredTracks2Algorithm) d("BrokenTracks",        \
+                                                                                                       BrokenTracksAlgorithm) \
+                                      d("ConeBasedMerging", ConeBasedMergingAlgorithm) d(                                     \
+                                          "HighEnergyPhotonRecovery",                                                         \
+                                          HighEnergyPhotonRecoveryAlgorithm) d("IsolatedHitMerging",                          \
+                                                                               IsolatedHitMergingAlgorithm)                   \
+                                          d("LoopingTracks", LoopingTracksAlgorithm) d(                                       \
+                                              "MipPhotonSeparation",                                                          \
+                                              MipPhotonSeparationAlgorithm) d("MuonPhotonSeparation",                         \
+                                                                              MuonPhotonSeparationAlgorithm)                  \
+                                              d("MuonClusterAssociation", MuonClusterAssociationAlgorithm) d(                 \
+                                                  "ProximityBasedMerging",                                                    \
+                                                  ProximityBasedMergingAlgorithm) d("ShowerMipMerging",                       \
+                                                                                    ShowerMipMergingAlgorithm)                \
+                                                  d("ShowerMipMerging2", ShowerMipMerging2Algorithm) d(                       \
+                                                      "ShowerMipMerging3",                                                    \
+                                                      ShowerMipMerging3Algorithm) d("ShowerMipMerging4",                      \
+                                                                                    ShowerMipMerging4Algorithm)               \
+                                                      d("SoftClusterMerging", SoftClusterMergingAlgorithm) d(                 \
+                                                          "TopologicalAssociationParent",                                     \
+                                                          TopologicalAssociationParentAlgorithm)                              \
+                                                          d("LoopingTrackAssociation",                                        \
+                                                            LoopingTrackAssociationAlgorithm) d("TrackRecovery",              \
+                                                                                                TrackRecoveryAlgorithm)       \
+                                                              d("TrackRecoveryHelix", TrackRecoveryHelixAlgorithm) d(         \
+                                                                  "TrackRecoveryInteractions",                                \
+                                                                  TrackRecoveryInteractionsAlgorithm)                         \
+                                                                  d("TrackClusterAssociation",                                \
+                                                                    TrackClusterAssociationAlgorithm)                         \
+                                                                      d("CaloHitPreparation",                                 \
+                                                                        CaloHitPreparationAlgorithm)                          \
+                                                                          d("ClusterPreparation",                             \
+                                                                            ClusterPreparationAlgorithm)                      \
+                                                                              d("EventPreparation",                           \
+                                                                                EventPreparationAlgorithm)                    \
+                                                                                  d("PfoPreparation",                         \
+                                                                                    PfoPreparationAlgorithm)                  \
+                                                                                      d("TrackPreparation",                   \
+                                                                                        TrackPreparationAlgorithm)            \
+                                                                                          d("TrainingSoftwareCompensa"        \
+                                                                                            "tion",                           \
                                                                                             TrainingSoftwareCompensation)
 
 #define LC_ENERGY_CORRECTION_LIST(d)                                                                                   \
