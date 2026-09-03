@@ -307,7 +307,8 @@ StatusCode LCParticleIdPlugins::LCPhotonId::ReadSettings(const TiXmlHandle /*xml
 
 LCParticleIdPlugins::LCElectronId::LCElectronId()
     : m_maxInnerLayer(4), m_maxEnergy(5.f), m_maxProfileStart(4.5f), m_maxProfileDiscrepancy(0.6f),
-      m_profileDiscrepancyForAutoId(0.5f), m_maxResidualEOverP(0.2f) {}
+      m_profileDiscrepancyForAutoId(0.5f), m_maxResidualEOverP(0.2f),
+      m_useCorrectedElectromagneticEnergyForEOverP(false) {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -340,7 +341,10 @@ bool LCParticleIdPlugins::LCElectronId::IsMatch(const Cluster* const pCluster) c
     if (momentumAtDca < std::numeric_limits<float>::epsilon())
       throw StatusCodeException(STATUS_CODE_FAILURE);
 
-    const float eOverP(electromagneticEnergy / momentumAtDca);
+    const float eOverPEnergy(m_useCorrectedElectromagneticEnergyForEOverP
+                                 ? pCluster->GetCorrectedElectromagneticEnergy(this->GetPandora())
+                                 : electromagneticEnergy);
+    const float eOverP(eOverPEnergy / momentumAtDca);
 
     if (std::fabs(eOverP - 1.f) < m_maxResidualEOverP)
       return true;
@@ -379,6 +383,10 @@ StatusCode LCParticleIdPlugins::LCElectronId::ReadSettings(const TiXmlHandle xml
 
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
                                   XmlHelper::ReadValue(xmlHandle, "MaxResidualEOverP", m_maxResidualEOverP));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "UseCorrectedElectromagneticEnergyForEOverP",
+                                                       m_useCorrectedElectromagneticEnergyForEOverP));
 
   return STATUS_CODE_SUCCESS;
 }

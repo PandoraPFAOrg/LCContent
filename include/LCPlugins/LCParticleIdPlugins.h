@@ -109,6 +109,7 @@ public:
     float m_maxProfileDiscrepancy;       ///< Max shower profile discrepancy for fast electron id
     float m_profileDiscrepancyForAutoId; ///< Shower profile discrepancy for automatic fast electron selection
     float m_maxResidualEOverP;           ///< Max absolute difference between unity and ratio em energy / track momentum
+    bool m_useCorrectedElectromagneticEnergyForEOverP; ///< Whether to use corrected em energy for E/p checks
   };
 
   /**

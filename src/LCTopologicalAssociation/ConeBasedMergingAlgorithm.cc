@@ -11,6 +11,8 @@
 #include "LCHelpers/ClusterHelper.h"
 #include "LCHelpers/SortingHelper.h"
 
+#include "LCPlugins/LCEnergyCorrectionPlugins.h"
+
 #include "LCTopologicalAssociation/ConeBasedMergingAlgorithm.h"
 
 using namespace pandora;
@@ -21,9 +23,9 @@ ConeBasedMergingAlgorithm::ConeBasedMergingAlgorithm()
     : m_canMergeMinMipFraction(0.7f), m_canMergeMaxRms(5.f), m_minHitsInCluster(6), m_minLayersToShowerStart(4),
       m_minConeFraction(0.5f), m_maxInnerLayerSeparation(1000.f), m_maxInnerLayerSeparationNoTrack(250.f),
       m_coneCosineHalfAngle(0.9f), m_minDaughterHadronicEnergy(1.f), m_maxTrackClusterChi(2.5f),
-      m_maxTrackClusterDChi2(1.f), m_minCosConeAngleWrtRadial(0.25f), m_cosConeAngleWrtRadialCut1(0.5f),
-      m_minHitSeparationCut1(std::sqrt(1000.f)), m_cosConeAngleWrtRadialCut2(0.75f),
-      m_minHitSeparationCut2(std::sqrt(1500.f)) {}
+      m_maxTrackClusterDChi2(1.f), m_useCorrectedHadronicEnergyForTrackComparison(false),
+      m_minCosConeAngleWrtRadial(0.25f), m_cosConeAngleWrtRadialCut1(0.5f), m_minHitSeparationCut1(std::sqrt(1000.f)),
+      m_cosConeAngleWrtRadialCut2(0.75f), m_minHitSeparationCut2(std::sqrt(1500.f)) {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -117,12 +119,29 @@ StatusCode ConeBasedMergingAlgorithm::Run() {
       if (sigmaE < std::numeric_limits<float>::epsilon())
         return STATUS_CODE_FAILURE;
 
-      const float clusterEnergySum = (pBestParentCluster->GetHadronicEnergy() + pDaughterCluster->GetHadronicEnergy());
+      float parentHadronicEnergy(pBestParentCluster->GetHadronicEnergy());
+      float mergedHadronicEnergy(parentHadronicEnergy + pDaughterCluster->GetHadronicEnergy());
+      float addedHadronicEnergy(pDaughterCluster->GetHadronicEnergy());
 
-      const float chi((clusterEnergySum - trackEnergySum) / sigmaE);
-      const float chi0((pBestParentCluster->GetHadronicEnergy() - trackEnergySum) / sigmaE);
+      if (m_useCorrectedHadronicEnergyForTrackComparison) {
+        parentHadronicEnergy = pBestParentCluster->GetCorrectedHadronicEnergy(this->GetPandora());
+        mergedHadronicEnergy = pBestParentCluster->GetHadronicEnergy() + pDaughterCluster->GetHadronicEnergy();
 
-      if (pDaughterCluster->GetHadronicEnergy() > m_minDaughterHadronicEnergy) {
+        // Use the parent direction as the merged-cluster direction estimate; the daughter has passed the parent-cone
+        // test.
+        const CartesianVector& parentDirection(pBestParentCluster->GetFitToAllHitsResult().IsFitSuccessful()
+                                                   ? pBestParentCluster->GetFitToAllHitsResult().GetDirection()
+                                                   : pBestParentCluster->GetInitialDirection());
+
+        mergedHadronicEnergy = LCEnergyCorrectionPlugins::GetThetaEnergyCorrectedEnergy(
+            pandora::HADRONIC, parentDirection, mergedHadronicEnergy);
+        addedHadronicEnergy = std::max(0.f, mergedHadronicEnergy - parentHadronicEnergy);
+      }
+
+      const float chi((mergedHadronicEnergy - trackEnergySum) / sigmaE);
+      const float chi0((parentHadronicEnergy - trackEnergySum) / sigmaE);
+
+      if (addedHadronicEnergy > m_minDaughterHadronicEnergy) {
         if ((chi > m_maxTrackClusterChi) || ((chi * chi - chi0 * chi0) > m_maxTrackClusterDChi2))
           continue;
       }
@@ -296,6 +315,10 @@ StatusCode ConeBasedMergingAlgorithm::ReadSettings(const TiXmlHandle xmlHandle) 
 
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
                                   XmlHelper::ReadValue(xmlHandle, "MaxTrackClusterDChi2", m_maxTrackClusterDChi2));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "UseCorrectedHadronicEnergyForTrackComparison",
+                                                       m_useCorrectedHadronicEnergyForTrackComparison));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(
       STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,

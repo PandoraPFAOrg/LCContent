@@ -64,6 +64,7 @@ private:
 
   float m_maxTrackClusterChi;   ///< Max no. standard deviations between clusters and associated track energies
   float m_maxTrackClusterDChi2; ///< Max diff between chi2 using parent+daughter energies and that using only parent
+  bool m_useCorrectedHadronicEnergyForTrackComparison; ///< Whether to use corrected hadronic energy in track checks
 
   unsigned int
       m_nGenericDistanceLayers; ///< Number of layers to examine when calculating generic distance between clusters
