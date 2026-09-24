@@ -147,69 +147,8 @@ float IdeaPfoCreationAlgorithm::CaloSigma(float p, bool isEm) const {
 pandora::StatusCode
 IdeaPfoCreationAlgorithm::CreateElectronCandidates(const pandora::ClusterList& /*clusterList*/) const {
   // No electron ID yet -> all track-associated clusters are handled by the charged-hadron branch
-  // (electrons inside jets are rare).  Disabled (not removed): original body commented out below.
+  // TODO: electron reconstruction and identification.
   return pandora::STATUS_CODE_SUCCESS;
-  /*
-  // loop over clusters
-  for (auto iter = clusterList.begin(); iter != clusterList.end(); ++ iter) {
-    const pandora::Cluster* const aClus = *iter;
-
-    bool isEmShower = aClus->GetParticleId() == pandora::PHOTON; // use photon flag set upstream for now
-    // PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, this->IsEmShower(aClus, isEmShower));
-
-    if (!isEmShower)
-      continue; // TODO electron ID can be different from the photon ID
-
-    const auto& associatedTrackList = aClus->GetAssociatedTrackList();
-    bool hasMutlipleTracks = associatedTrackList.size() > 1;
-
-    // create PFO
-    PandoraContentApi::ParticleFlowObject::Parameters pfoParameters;
-    pfoParameters.m_clusterList.push_back(aClus);
-
-    for (const auto* aTrack : associatedTrackList) {
-      // add all associated tracks for now
-      pfoParameters.m_trackList.push_back(aTrack);
-    }
-
-    const auto* bestTrack = FindBestAssociatedTrack(aClus);
-
-    // TODO apply proper electron ID and use different energy estimation for electrons
-    // use cluster property if there are multiple tracks
-    float energy = bestTrack->GetMomentumAtDca().GetMagnitude();
-    float clusterEnergy = 0.f;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, this->GetDualReadoutEnergy(aClus, clusterEnergy));
-    auto momentum = bestTrack->GetMomentumAtDca();
-    const float eop = clusterEnergy / energy;
-    const float sigmaEm = CaloSigma(energy, isEmShower);
-    bool failEoverP = eop > 1.f + m_nSigma * sigmaEm;
-
-    if (hasMutlipleTracks || failEoverP) {
-      // fall back to cluster energy if there are multiple tracks or fail E/p cut
-      energy = clusterEnergy;
-
-      // calculate energy and momentum
-      auto clusterPos = aClus->GetCentroid(aClus->GetInnerPseudoLayer()); // TODO use beamspot
-      auto unitVec = clusterPos.GetUnitVector();
-      momentum = unitVec * energy;
-    }
-
-    pfoParameters.m_energy = energy;
-    pfoParameters.m_momentum = momentum;
-    pfoParameters.m_mass = pandora::PdgTable::GetParticleMass(pandora::E_MINUS);
-    pfoParameters.m_charge = bestTrack->GetCharge();
-    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ?
-  pandora::PdgTable::GetParticlePdgCode(pandora::E_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::E_MINUS);
-
-    // TODO add vertex
-
-    // Create the pfo
-    const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this,
-  pfoParameters, aPFO)); } // cluster loop
-
-  return pandora::STATUS_CODE_SUCCESS;
-  */
 } // CreateElectronCandidates
 
 pandora::StatusCode
@@ -384,11 +323,8 @@ IdeaPfoCreationAlgorithm::CreateNeutralHadronCandidates(const pandora::ClusterLi
     float clusterEnergy = 0.f;
     PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, this->GetDualReadoutEnergy(aClus, clusterEnergy));
 
-    // Flat hadronic-response calibration on the E_DR neutral-hadron energy.  E_DR under-responds for
-    // these (mostly untracked-charged-as-neutral) hadron clusters by ~10% at the event level; the
-    // jet-energy-budget / NH-scale-scan study shows a constant 1.10 lift de-biases the di-jet mass to
-    // ~91 GeV with NO mass-resolution cost.  (The recovered-neutral K_LONG PFOs in the charged branch
-    // are regression-calibrated to the true scale, so they are NOT scaled.)  XML "NeutralHadEnergyScale".
+    // Optional flat rescaling of the neutral-hadron energy by the user-given XML property
+    // "NeutralHadEnergyScale" (default 1, i.e. no rescaling).
     clusterEnergy *= m_neutralHadScale;
 
     // create PFO
@@ -416,55 +352,10 @@ IdeaPfoCreationAlgorithm::CreateNeutralHadronCandidates(const pandora::ClusterLi
 } // CreateNeutralHadronCandidates
 
 pandora::StatusCode IdeaPfoCreationAlgorithm::CreatePfoFromTrack(const pandora::TrackList* /*trackList*/) const {
-  // DISABLED: clusterless track-only ("looper") PFO emission removed -- it DOUBLE-COUNTS energy.
-  // These low-pT tracks have no associated cluster, but truth shows ~91% of them DO reach the calo and
-  // deposit into CLUSTERED cells (already counted as NH/photon); the track is then added again here as a
-  // muon PFO (~0.8 GeV/evt double-count).  Root cause is a track-cluster ASSOCIATION failure: Pandora's
-  // single-helix extrapolation gives a (0,0,0) AtCalorimeter state for 58% of these curlers, and lands
-  // >15 mm off the nearest ECAL hit for most of the rest, so the ECAL 10 mm match cannot fire.  The
-  // (rejected) forward-|eta| hypothesis was 0%.  Proper fix is upstream: a real track finder + Kalman fit
-  // with material/extrapolation, then these clusters associate and become charged.  Until then, do NOT
-  // emit them.  (The co-axial-neutral K_LONG from the E_DR/p gate in the charged branch is unaffected.)
+  // DISABLED: promoting unmatched tracks to PFOs degrades the jet energy resolution.  Most of these
+  // tracks do reach the calorimeter and their energy is already counted in a cluster, so emitting them
+  // double-counts; it is the track-cluster matching that failed, and that is what should be fixed.
   return pandora::STATUS_CODE_SUCCESS;
-  /*
-  const pandora::ClusterList* clusterList = nullptr;
-  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
-      PandoraContentApi::GetCurrentList(*this, clusterList));
-
-  // loop over tracks and create a PFO for each track not already used in the cluster-based PFOs
-  for (const auto* track : *trackList) {
-    if (track->HasAssociatedCluster())
-      continue;
-
-    float pt, phi, pz;
-    track->GetMomentumAtDca().GetCylindricalCoordinates(pt, phi, pz);
-
-    if (pt > m_ptCut)
-      continue; // it should have reached the calorimeter
-
-    // create PFO
-    PandoraContentApi::ParticleFlowObject::Parameters pfoParameters;
-    pfoParameters.m_trackList.push_back(track);
-
-    // calculate energy and momentum
-    float energy = track->GetMomentumAtDca().GetMagnitude();
-    auto momentum = track->GetMomentumAtDca();
-
-    pfoParameters.m_energy = energy;
-    pfoParameters.m_momentum = momentum;
-    pfoParameters.m_mass = pandora::PdgTable::GetParticleMass(pandora::MU_MINUS); // muon for now
-    pfoParameters.m_charge = track->GetCharge();
-    pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0) ?
-  pandora::PdgTable::GetParticlePdgCode(pandora::MU_PLUS) : pandora::PdgTable::GetParticlePdgCode(pandora::MU_MINUS);
-
-    // Create the pfo
-    const pandora::ParticleFlowObject* aPFO = nullptr;
-    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraContentApi::ParticleFlowObject::Create(*this,
-  pfoParameters, aPFO));
-  }
-
-  return pandora::STATUS_CODE_SUCCESS;
-  */
 } // CreatePfoFromTrack
 
 pandora::StatusCode IdeaPfoCreationAlgorithm::ReadSettings(const pandora::TiXmlHandle xmlHandle) {
