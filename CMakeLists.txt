@@ -18,7 +18,7 @@ set(${PROJECT_NAME}_VERSION "${${PROJECT_NAME}_VERSION_MAJOR}.${${PROJECT_NAME}_
 
 include(GNUInstallDirs)
 
-find_package(PandoraSDK 03.00.00 REQUIRED)
+find_package(PandoraSDK 04.00.01 REQUIRED)
 
 if(PANDORA_MONITORING)
     find_package(PandoraMonitoring 03.00.00 REQUIRED)
