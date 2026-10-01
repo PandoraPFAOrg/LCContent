@@ -26,12 +26,8 @@ if("@PANDORA_MONITORING@")
 endif()
 
 if("@LCContent_BUILD_ML@")
-    # LCContentML exposes ONNX Runtime in its public ABI, so consumers need the imported
-    # target.  New packages ship onnxruntime-Config.cmake; older ones ship ONNXRuntime.
-    find_package(onnxruntime)
-    if(NOT onnxruntime_FOUND)
-        find_dependency(ONNXRuntime)
-    endif()
+    # LCContentML exposes ONNX Runtime in its public ABI, so consumers need the imported target.
+    find_dependency(onnxruntime)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/LCContentTargets.cmake")

@@ -89,15 +89,7 @@ endif()
 
 # ---- Optional ONNX ML-inference library (libLCContentML) ----
 if(LCContent_BUILD_ML)
-    # New onnxruntime packages ship onnxruntime-Config.cmake (target onnxruntime::onnxruntime);
-    # older ones ship ONNXRuntime.
-    find_package(onnxruntime)
-    if(NOT onnxruntime_FOUND)
-        find_package(ONNXRuntime)
-    endif()
-    if(NOT (onnxruntime_FOUND OR ONNXRuntime_FOUND))
-        message(FATAL_ERROR "LCContent_BUILD_ML=ON but ONNX Runtime was not found.")
-    endif()
+    find_package(onnxruntime REQUIRED)
 
     file(GLOB_RECURSE LC_CONTENT_ML_SRCS    RELATIVE ${PROJECT_SOURCE_DIR}        "src/MLInference/*.cc")
     file(GLOB_RECURSE LC_CONTENT_ML_HEADERS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "include/MLInference/*.h")
@@ -106,12 +98,7 @@ if(LCContent_BUILD_ML)
     add_library(${PROJECT_NAME}::LCContentML ALIAS LCContentML)
     target_sources(LCContentML PUBLIC FILE_SET headers TYPE HEADERS BASE_DIRS "include" FILES ${LC_CONTENT_ML_HEADERS})
     target_link_libraries(LCContentML PUBLIC ${PROJECT_NAME})   # brings PandoraSDK + LCContent includes
-    if(TARGET onnxruntime::onnxruntime)
-        target_link_libraries(LCContentML PUBLIC onnxruntime::onnxruntime)
-    else()
-        target_include_directories(LCContentML PUBLIC ${ONNXRuntime_INCLUDE_DIRS})
-        target_link_libraries(LCContentML PUBLIC ${ONNXRuntime_LIBRARIES})
-    endif()
+    target_link_libraries(LCContentML PUBLIC onnxruntime::onnxruntime)
 
     install(TARGETS LCContentML
       EXPORT ${PROJECT_NAME}Targets
