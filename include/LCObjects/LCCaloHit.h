@@ -15,10 +15,12 @@
 
 #include "LCObjects/LCPersistencyConfig.h"
 
+#ifndef LC_PANDORA_FIELD_MAP_PERSISTENCY
 #include "Persistency/BinaryFileReader.h"
 #include "Persistency/BinaryFileWriter.h"
 #include "Persistency/XmlFileReader.h"
 #include "Persistency/XmlFileWriter.h"
+#endif
 
 namespace lc_content {
 
@@ -222,7 +224,15 @@ public:
    *  @param  parameters the parameters to pass in constructor
    *  @param  fields the field map, used to extract any additional parameters
    */
-  pandora::StatusCode Read(Parameters&, const pandora::FieldMap&) const { return pandora::STATUS_CODE_SUCCESS; }
+  pandora::StatusCode Read(Parameters& parameters, const pandora::FieldMap& fields) const {
+    unsigned int statusBits(0u);
+    PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, fields.Get("statusBits", statusBits));
+
+    LCCaloHitParameters& lcCaloHitParameters(dynamic_cast<LCCaloHitParameters&>(parameters));
+    lcCaloHitParameters.m_statusBits = statusBits;
+
+    return pandora::STATUS_CODE_SUCCESS;
+  }
 
   /**
    *  @brief  Persist any additional (derived class only) object parameters into the supplied field map
@@ -230,7 +240,15 @@ public:
    *  @param  pObject the address of the object to persist
    *  @param  fields the field map to receive the additional parameters
    */
-  pandora::StatusCode Write(const Object* const, pandora::FieldMap&) const { return pandora::STATUS_CODE_SUCCESS; }
+  pandora::StatusCode Write(const Object* const pObject, pandora::FieldMap& fields) const {
+    const LCCaloHit* const pLCCaloHit(dynamic_cast<const LCCaloHit*>(pObject));
+    if (!pLCCaloHit)
+      return pandora::STATUS_CODE_INVALID_PARAMETER;
+
+    fields.Set("statusBits", pLCCaloHit->GetStatusBits());
+
+    return pandora::STATUS_CODE_SUCCESS;
+  }
 #else
   /**
    *  @brief  Read any additional (derived class only) object parameters from file using the specified file reader
