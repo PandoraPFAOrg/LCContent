@@ -225,7 +225,7 @@ IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(const pandora::ClusterLi
     const bool gateFires = regExcess > m_significanceK * sigmaReg * sumEdr; // S = regExcess/(sigma_c*sumEdr) > k
     const float clusterExcess = clusterEnergy - trackP;                     // this cluster's calo-minus-track energy
 
-    float energy = trackP;                         // charged PFO keeps the exact track p (never inflated)
+    float energy = bestTrack->GetEnergyAtDca();    // track energy sqrt(p^2 + m^2), never the calo energy
     auto momentum = bestTrack->GetMomentumAtDca(); // track (IP) momentum, magnitude p
     float newNeutralEn = 0.f;
 
@@ -235,12 +235,14 @@ IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(const pandora::ClusterLi
     } else if (gateFires && clusterExcess > 0.f) {
       newNeutralEn = clusterExcess; // gate fires: emit the FULL excess as a real neutral
     }
-    // else: pure charged -> energy = trackP, no neutral
+    // else: pure charged -> track energy, no neutral
 
     pfoParameters.m_energy = energy;
     pfoParameters.m_momentum = momentum;
     pfoParameters.m_mass =
         pandora::PdgTable::GetParticleMass(pandora::PI_PLUS); // TODO pion mass for now (revisit after K-pi separation)
+    // multi-track clusters are taken as track-cluster mismatches, not a multi-charged particle: the
+    // PFO is a single particle with the best track's charge (all tracks stay attached in m_trackList)
     pfoParameters.m_charge = bestTrack->GetCharge();
     pfoParameters.m_particleId = (pfoParameters.m_charge.Get() > 0)
                                      ? pandora::PdgTable::GetParticlePdgCode(pandora::PI_PLUS)
@@ -340,7 +342,9 @@ IdeaPfoCreationAlgorithm::CreateNeutralHadronCandidates(const pandora::ClusterLi
     pfoParameters.m_momentum = momentum;
     pfoParameters.m_mass = pandora::PdgTable::GetParticleMass(pandora::K_LONG);
     pfoParameters.m_charge = 0.f;
-    pfoParameters.m_particleId = aClus->GetParticleId(); // pandora::PdgTable::GetParticlePdgCode(pandora::K_LONG);
+    // every non-photon neutral is a neutral hadron, labelled K_LONG consistently with E = E_cal (no
+    // n/nbar mass correction); satellites left unmerged keep UNKNOWN_PARTICLE_TYPE from the PID
+    pfoParameters.m_particleId = pandora::PdgTable::GetParticlePdgCode(pandora::K_LONG);
 
     // Create the pfo
     const pandora::ParticleFlowObject* aPFO = nullptr;
