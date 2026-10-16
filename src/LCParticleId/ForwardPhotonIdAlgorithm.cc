@@ -8,6 +8,7 @@
 #include "Pandora/AlgorithmHeaders.h"
 
 #include <cmath>
+#include <iostream>
 
 using namespace pandora;
 
@@ -170,6 +171,11 @@ StatusCode ForwardPhotonIdAlgorithm::ReadSettings(const TiXmlHandle xmlHandle) {
                                   XmlHelper::ReadValue(xmlHandle, "W0", m_w0));
   PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
                                   XmlHelper::ReadValue(xmlHandle, "ChiHcal", m_chiHcal));
+
+  if (m_chiHcal <= 0.f || m_chiHcal >= 1.f) {
+    std::cerr << "ForwardPhotonIdAlgorithm::ReadSettings: ChiHcal must be 0 < chi < 1" << std::endl;
+    return STATUS_CODE_INVALID_PARAMETER;
+  }
   return STATUS_CODE_SUCCESS;
 }
 

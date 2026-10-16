@@ -46,6 +46,11 @@ public:
    */
   DualReadoutCorrection() = default;
 
+  /**
+   *  @brief  Replace correctedEnergy by the dual-readout energy recomputed from the cluster's raw S/C hits.
+   *          This is the full hadronic correction: the incoming value is ignored, so no other hadronic
+   *          correction plugin should be registered alongside it
+   */
   pandora::StatusCode MakeEnergyCorrections(const pandora::Cluster* const pCluster,
                                             float& correctedEnergy) const override;
 
@@ -60,8 +65,8 @@ public:
 private:
   pandora::StatusCode ReadSettings(const pandora::TiXmlHandle xmlHandle) override;
 
-  float m_chiEcal = 0.41f; // ECAL dual-readout correction factor
-  float m_chiHcal = 0.31f; // HCAL dual-readout correction factor
+  float m_chiEcal = 0.f; // ECAL dual-readout correction factor (mandatory setting)
+  float m_chiHcal = 0.f; // HCAL dual-readout correction factor (mandatory setting)
 
 }; // class DualReadoutCorrection
 } // namespace lc_content
