@@ -213,8 +213,8 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
 
     // Try barrel intersection
     pandora::CartesianVector barrelPoint(0.f, 0.f, 0.f);
-    const pandora::StatusCode scBarrel = helix.GetPointOnCircle(m_hcalSurfaceR, rp, barrelPoint);
-    const float barrelTime = (barrelPoint.GetZ() - rp.GetZ()) / pz;
+    float barrelTime = 0.f; // helix generic time from the transverse phase, well defined at pz = 0
+    const pandora::StatusCode scBarrel = helix.GetPointOnCircle(m_hcalSurfaceR, rp, barrelPoint, barrelTime);
 
     // Try endcap intersection (correct sign from momentum z-component).  Skipped for a
     // barrel-only geometry: m_hcalSurfaceZHalf is the infinite sentinel there, and asking the
@@ -225,8 +225,8 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
 
     if (m_hasHcalEndcap) {
       const float targetZ = (pz >= 0.f) ? m_hcalSurfaceZHalf : -m_hcalSurfaceZHalf;
-      const pandora::StatusCode scEndcap = helix.GetPointInZ(targetZ, rp, endcapPoint);
-      endcapTime = (endcapPoint.GetZ() - rp.GetZ()) / pz;
+      const pandora::StatusCode scEndcap =
+          helix.GetPointInZ(targetZ, rp, endcapPoint, endcapTime); // NOT_FOUND if pz ~ 0
       const float endcapR2 = endcapPoint.GetX() * endcapPoint.GetX() + endcapPoint.GetY() * endcapPoint.GetY();
       endcapOk = (scEndcap == pandora::STATUS_CODE_SUCCESS) && (endcapR2 <= m_hcalSurfaceR * m_hcalSurfaceR) &&
                  (endcapTime > 0.f); // require forward extrapolation in time
@@ -244,8 +244,9 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface(Seed
     } else if (endcapOk) {
       impact = endcapPoint;
     } else {
-      std::cerr << "EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface - "
-                << "Failed to extrapolate charged seed to HCAL surface" << std::endl;
+      if (PandoraContentApi::GetSettings(*this)->ShouldDisplayAlgorithmInfo())
+        std::cerr << "EcalSeededClusteringAlgorithm::ExtrapolateToHcalSurface - "
+                  << "Failed to extrapolate charged seed to HCAL surface" << std::endl;
       return pandora::STATUS_CODE_FAILURE;
     } // if barrel vs. endcap intersection
 
@@ -697,6 +698,9 @@ pandora::StatusCode EcalSeededClusteringAlgorithm::FormUnseededClusters(std::vec
   const float maxDR2 = m_maxSearchDeltaR * m_maxSearchDeltaR;
 
   for (const HitCache* center : remaining) {
+    if (circleAssigned.count(center->pHit))
+      continue; // already claimed by a higher-energy seed circle
+
     // Max opening angles for this center hit: atan2(cut, r_center)
     const float r_center = center->pos.GetMagnitude();
     const float cosSeedCut = r_center / std::sqrt(r_center * r_center + m_seedCircleRadius * m_seedCircleRadius);
