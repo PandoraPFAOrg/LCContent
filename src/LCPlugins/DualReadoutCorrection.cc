@@ -23,7 +23,8 @@ DualReadoutEnergy RunDualReadoutCorrection(const pandora::Cluster* const aClus, 
   if (pandoraCaloHitList.empty())
     return out;
 
-  for (const pandora::CaloHitList* const pHitList : {&pandoraCaloHitList, &isolatedHits}) {
+  const pandora::CaloHitList* const hitLists[] = {&pandoraCaloHitList, &isolatedHits};
+  for (const pandora::CaloHitList* const pHitList : hitLists) {
     for (const auto* hit : *pHitList) {
       float ecalEnergy = hit->GetElectromagneticEnergy();
       float hcalEnergy = hit->GetHadronicEnergy();

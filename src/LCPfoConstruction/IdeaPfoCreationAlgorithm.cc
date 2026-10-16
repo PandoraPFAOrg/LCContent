@@ -41,7 +41,8 @@ float IdeaPfoCreationAlgorithm::EstimateScintEnergy(const pandora::Cluster* aClu
   const auto& isolated = aClus->GetIsolatedCaloHitList();
 
   float eS = 0.f;
-  for (const pandora::CaloHitList* const pHitList : {&hits, &isolated}) {
+  const pandora::CaloHitList* const hitLists[] = {&hits, &isolated};
+  for (const pandora::CaloHitList* const pHitList : hitLists) {
     for (const auto* hit : *pHitList) {
       if (hit->GetHitType() != pandora::DRC_SCINT)
         continue;
