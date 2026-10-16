@@ -436,7 +436,12 @@ pandora::StatusCode SatelliteAssignmentOnnxAlgorithm::ReadSettings(const pandora
       XmlHelper::ReadValue(xmlHandle, "NeutralAffinityThreshold", m_neutralAffinityThreshold));
 
   m_coneCos = std::cos(m_coneHalfAngle);
+
   this->LoadModel();
+
+  if (!m_session->IsValid())
+    return STATUS_CODE_FAILURE;
+
   return STATUS_CODE_SUCCESS;
 }
 

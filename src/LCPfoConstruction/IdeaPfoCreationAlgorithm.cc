@@ -41,8 +41,8 @@ float IdeaPfoCreationAlgorithm::EstimateScintEnergy(const pandora::Cluster* aClu
   const auto& isolated = aClus->GetIsolatedCaloHitList();
 
   float eS = 0.f;
-  for (const pandora::CaloHitList& hitList : {hits, isolated}) {
-    for (const auto* hit : hitList) {
+  for (const pandora::CaloHitList* const pHitList : {&hits, &isolated}) {
+    for (const auto* hit : *pHitList) {
       if (hit->GetHitType() != pandora::DRC_SCINT)
         continue;
       const float em = hit->GetElectromagneticEnergy(); // > 0 for ECAL
@@ -62,7 +62,8 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::GetDualReadoutEnergy(const pandora
   }
 
   float correctedEm = 0.f, correctedHad = 0.f;
-  pEnergyCorrections->MakeEnergyCorrections(aClus, correctedEm, correctedHad);
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                           pEnergyCorrections->MakeEnergyCorrections(aClus, correctedEm, correctedHad));
   energy = correctedHad; // use hadronic (dual-readout corrected) energy
 
   return pandora::STATUS_CODE_SUCCESS;
@@ -135,13 +136,11 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::Run() {
   return pandora::STATUS_CODE_SUCCESS;
 } // Run
 
-float IdeaPfoCreationAlgorithm::CaloSigma(float p, bool isEm) const {
+float IdeaPfoCreationAlgorithm::CaloSigma(float p) const {
   if (p <= 0.f)
     return std::numeric_limits<float>::max();
 
-  const float stoch = isEm ? m_stochasticEm : m_stochasticHad;
-  const float cst = isEm ? m_constantEm : m_constantHad;
-  return std::max(m_sigmaFloor, stoch / std::sqrt(p) + cst);
+  return std::max(m_sigmaFloor, m_stochasticHad / std::sqrt(p) + m_constantHad);
 }
 
 pandora::StatusCode
@@ -220,8 +219,8 @@ IdeaPfoCreationAlgorithm::CreateChargedHadronCandidates(const pandora::ClusterLi
         sumP += kv.second.sumP;
       }
     }
-    const float sigmaReg = CaloSigma(sumEdr, /*isEm=*/false); // fractional hadronic sigma at the regional E_DR
-    const float regExcess = sumEdr - sumP;                    // regional neutral energy (calo above tracks)
+    const float sigmaReg = CaloSigma(sumEdr); // fractional hadronic sigma at the regional E_DR
+    const float regExcess = sumEdr - sumP;    // regional neutral energy (calo above tracks)
     const bool gateFires = regExcess > m_significanceK * sigmaReg * sumEdr; // S = regExcess/(sigma_c*sumEdr) > k
     const float clusterExcess = clusterEnergy - trackP;                     // this cluster's calo-minus-track energy
 
@@ -363,26 +362,14 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::CreatePfoFromTrack(const pandora::
 } // CreatePfoFromTrack
 
 pandora::StatusCode IdeaPfoCreationAlgorithm::ReadSettings(const pandora::TiXmlHandle xmlHandle) {
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-                                  pandora::XmlHelper::ReadValue(xmlHandle, "OutputPfoListName", m_outputPfoListName));
-
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-                                  pandora::XmlHelper::ReadValue(xmlHandle, "NSigma", m_nSigma));
+  PANDORA_RETURN_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=,
+                           pandora::XmlHelper::ReadValue(xmlHandle, "OutputPfoListName", m_outputPfoListName));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
                                   pandora::XmlHelper::ReadValue(xmlHandle, "StochasticTermHad", m_stochasticHad));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
                                   pandora::XmlHelper::ReadValue(xmlHandle, "ConstantTermHad", m_constantHad));
-
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-                                  pandora::XmlHelper::ReadValue(xmlHandle, "StochasticTermEm", m_stochasticEm));
-
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-                                  pandora::XmlHelper::ReadValue(xmlHandle, "ConstantTermEm", m_constantEm));
-
-  PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
-                                  pandora::XmlHelper::ReadValue(xmlHandle, "PtCut", m_ptCut));
 
   // regional-excess significance gate on the charged-hadron energy
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
@@ -391,7 +378,7 @@ pandora::StatusCode IdeaPfoCreationAlgorithm::ReadSettings(const pandora::TiXmlH
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
                                   pandora::XmlHelper::ReadValue(xmlHandle, "SignificanceK", m_significanceK));
 
-  // flat neutral-hadron energy calibration (independent of the regression; default 1.10)
+  // flat neutral-hadron energy calibration (independent of the regression; default 1.0)
   PANDORA_RETURN_RESULT_IF_AND_IF(pandora::STATUS_CODE_SUCCESS, pandora::STATUS_CODE_NOT_FOUND, !=,
                                   pandora::XmlHelper::ReadValue(xmlHandle, "NeutralHadEnergyScale", m_neutralHadScale));
 

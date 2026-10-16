@@ -4,7 +4,7 @@
  *  @brief  Header file for the neutral-PID (sat/NH/photon) ONNX tagging algorithm.
  *
  *  Port of k4RecCalorimeter ClusterNeutralPidOnnx into a Pandora algorithm.  Runs a
- *  ParT multi-class model returning a softmax over {satellite, neutral-hadron, photon}
+ *  ParT multi-class model returning scores for {satellite, neutral-hadron, photon}
  *  for every cluster in the current list and writes the verdict as the cluster
  *  ParticleId:  photon -> pandora::PHOTON, NH -> pandora::K_LONG, satellite ->
  *  pandora::UNKNOWN_PARTICLE_TYPE.  Charged identification is left to the downstream
@@ -92,7 +92,7 @@ private:
   int m_budgetOtherEcal;   ///< max other-ECAL tokens per cluster
   int m_budgetHcal;        ///< max HCAL tokens per cluster
   int m_budgetTrack;       ///< max track tokens per cluster
-  float m_photonThreshold; ///< if <0: argmax(3); else photon if sm[photon] > threshold
+  float m_photonThreshold; ///< if <0: argmax(3); else photon if photon score > threshold
   int m_maxTokens;         ///< sum of budgets
 
   // ---- ONNX session ----

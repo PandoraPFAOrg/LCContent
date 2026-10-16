@@ -68,44 +68,44 @@ std::vector<std::int64_t> OnnxSession::InputShape(const std::size_t index) const
 //------------------------------------------------------------------------------------------------------------------------------------------
 
 std::vector<std::vector<float>> OnnxSession::Run(const std::vector<Input>& inputs) const {
-  if (!m_impl->valid)
+  if (!m_impl->valid || inputs.size() != m_impl->inputNames.size())
     return {};
 
-  // ONNX Runtime's CreateTensor takes a non-const data pointer but does not modify inputs; the
-  // const_cast is safe (the caller owns const data for the duration of the call).
-  std::vector<Ort::Value> ortInputs;
-  ortInputs.reserve(inputs.size());
-  for (const Input& input : inputs) {
-    std::size_t nElements = 1;
-    for (const std::int64_t dim : input.shape)
-      nElements *= static_cast<std::size_t>(dim);
-
-    switch (input.type) {
-    case Input::Type::Float:
-      ortInputs.emplace_back(Ort::Value::CreateTensor<float>(m_impl->mem,
-                                                             const_cast<float*>(static_cast<const float*>(input.data)),
-                                                             nElements, input.shape.data(), input.shape.size()));
-      break;
-    case Input::Type::Int64:
-      ortInputs.emplace_back(Ort::Value::CreateTensor<std::int64_t>(
-          m_impl->mem, const_cast<std::int64_t*>(static_cast<const std::int64_t*>(input.data)), nElements,
-          input.shape.data(), input.shape.size()));
-      break;
-    case Input::Type::Bool:
-      ortInputs.emplace_back(Ort::Value::CreateTensor<bool>(m_impl->mem,
-                                                            const_cast<bool*>(static_cast<const bool*>(input.data)),
-                                                            nElements, input.shape.data(), input.shape.size()));
-      break;
-    }
-  }
-
-  std::vector<const char*> inputNamesC, outputNamesC;
-  for (const std::string& name : m_impl->inputNames)
-    inputNamesC.push_back(name.c_str());
-  for (const std::string& name : m_impl->outputNames)
-    outputNamesC.push_back(name.c_str());
-
   try {
+    // ONNX Runtime's CreateTensor takes a non-const data pointer but does not modify inputs; the
+    // const_cast is safe (the caller owns const data for the duration of the call).
+    std::vector<Ort::Value> ortInputs;
+    ortInputs.reserve(inputs.size());
+    for (const Input& input : inputs) {
+      std::size_t nElements = 1;
+      for (const std::int64_t dim : input.shape)
+        nElements *= static_cast<std::size_t>(dim);
+
+      switch (input.type) {
+      case Input::Type::Float:
+        ortInputs.emplace_back(
+            Ort::Value::CreateTensor<float>(m_impl->mem, const_cast<float*>(static_cast<const float*>(input.data)),
+                                            nElements, input.shape.data(), input.shape.size()));
+        break;
+      case Input::Type::Int64:
+        ortInputs.emplace_back(Ort::Value::CreateTensor<std::int64_t>(
+            m_impl->mem, const_cast<std::int64_t*>(static_cast<const std::int64_t*>(input.data)), nElements,
+            input.shape.data(), input.shape.size()));
+        break;
+      case Input::Type::Bool:
+        ortInputs.emplace_back(Ort::Value::CreateTensor<bool>(m_impl->mem,
+                                                              const_cast<bool*>(static_cast<const bool*>(input.data)),
+                                                              nElements, input.shape.data(), input.shape.size()));
+        break;
+      }
+    }
+
+    std::vector<const char*> inputNamesC, outputNamesC;
+    for (const std::string& name : m_impl->inputNames)
+      inputNamesC.push_back(name.c_str());
+    for (const std::string& name : m_impl->outputNames)
+      outputNamesC.push_back(name.c_str());
+
     auto outputs = m_impl->session->Run(Ort::RunOptions{nullptr}, inputNamesC.data(), ortInputs.data(),
                                         ortInputs.size(), outputNamesC.data(), outputNamesC.size());
 

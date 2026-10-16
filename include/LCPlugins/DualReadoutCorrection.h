@@ -10,6 +10,8 @@
 
 #include "Plugins/EnergyCorrectionsPlugin.h"
 
+#include <map>
+
 namespace lc_content {
 /**
  *   @brief  Simple struct to hold dual readout energy information

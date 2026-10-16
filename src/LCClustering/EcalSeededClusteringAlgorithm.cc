@@ -164,6 +164,8 @@ void EcalSeededClusteringAlgorithm::BuildHcalPool(const pandora::CaloHitList& al
   // loop over all hits and cache HCAL hits above threshold
   hcalPool.reserve(allHits.size());
   for (const pandora::CaloHit* const h : allHits) {
+    if (!PandoraContentApi::IsAvailable(*this, h))
+      continue; // already clustered by a previous algorithm
     if (h->GetHadronicEnergy() <= 0.f)
       continue; // skip ECAL
     if (h->GetHadronicEnergy() < m_hardThreshold)
