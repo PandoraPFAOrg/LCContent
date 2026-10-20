@@ -20,9 +20,14 @@ set_and_check(LCContent_LIBRARY_DIRS "@PACKAGE_CMAKE_INSTALL_LIBDIR@")
 set(LCContent_LIBRARIES "@LCContent_LIBRARIES@")
 
 include(CMakeFindDependencyMacro)
-find_dependency(PandoraSDK REQUIRED)
+find_dependency(PandoraSDK 04.00.01 REQUIRED)
 if("@PANDORA_MONITORING@")
     find_dependency(PandoraMonitoring REQUIRED)
+endif()
+
+if("@LCContent_BUILD_ML@")
+    # LCContentML exposes ONNX Runtime in its public ABI, so consumers need the imported target.
+    find_dependency(onnxruntime)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/LCContentTargets.cmake")

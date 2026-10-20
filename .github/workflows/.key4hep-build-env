@@ -1,0 +1,2 @@
+# Build the optional ONNX layer (libLCContentML) in the standard Key4hep CI.
+export K4_CMAKE_EXTRA_ARGS="-DLCContent_BUILD_ML=ON"
