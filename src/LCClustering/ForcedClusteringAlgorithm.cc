@@ -10,12 +10,14 @@
 
 #include "LCClustering/ForcedClusteringAlgorithm.h"
 
+#include "LCObjects/LCCaloHit.h"
+
 using namespace pandora;
 
 namespace lc_content {
 
 ForcedClusteringAlgorithm::ForcedClusteringAlgorithm()
-    : m_shouldRunStandardClusteringAlgorithm(false), m_shouldClusterIsolatedHits(false),
+    : m_shouldRunStandardClusteringAlgorithm(false), m_shouldClusterIsolatedHits(false), m_shouldExcludeBIBHits(false),
       m_shouldAssociateIsolatedHits(false) {}
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -56,7 +58,8 @@ StatusCode ForcedClusteringAlgorithm::Run() {
          hitIter != hitIterEnd; ++hitIter) {
       const CaloHit* const pCaloHit = *hitIter;
 
-      if ((m_shouldClusterIsolatedHits || !pCaloHit->IsIsolated()) && PandoraContentApi::IsAvailable(*this, pCaloHit)) {
+      if ((m_shouldClusterIsolatedHits || !pCaloHit->IsIsolated()) &&
+          (!m_shouldExcludeBIBHits || !IsPossibleBIB(pCaloHit)) && PandoraContentApi::IsAvailable(*this, pCaloHit)) {
         CartesianVector helixSeparation(0.f, 0.f, 0.f);
         PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
                                  helix.GetDistanceToPoint(pCaloHit->GetPositionVector(), helixSeparation));
@@ -94,7 +97,8 @@ StatusCode ForcedClusteringAlgorithm::Run() {
 
     for (CaloHitList::const_iterator iter = pCaloHitList->begin(), iterEnd = pCaloHitList->end(); iter != iterEnd;
          ++iter) {
-      if ((m_shouldClusterIsolatedHits || !(*iter)->IsIsolated()) && PandoraContentApi::IsAvailable(*this, *iter))
+      if ((m_shouldClusterIsolatedHits || !(*iter)->IsIsolated()) &&
+          (!m_shouldExcludeBIBHits || !IsPossibleBIB(*iter)) && PandoraContentApi::IsAvailable(*this, *iter))
         remnantCaloHitList.push_back(*iter);
     }
 
@@ -154,6 +158,9 @@ StatusCode ForcedClusteringAlgorithm::ReadSettings(const TiXmlHandle xmlHandle) 
   PANDORA_RETURN_RESULT_IF_AND_IF(
       STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
       XmlHelper::ReadValue(xmlHandle, "ShouldClusterIsolatedHits", m_shouldClusterIsolatedHits));
+
+  PANDORA_RETURN_RESULT_IF_AND_IF(STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,
+                                  XmlHelper::ReadValue(xmlHandle, "ShouldExcludeBIBHits", m_shouldExcludeBIBHits));
 
   PANDORA_RETURN_RESULT_IF_AND_IF(
       STATUS_CODE_SUCCESS, STATUS_CODE_NOT_FOUND, !=,

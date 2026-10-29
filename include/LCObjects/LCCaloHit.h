@@ -186,6 +186,22 @@ inline const LCCaloHit* GetLCCaloHit(const pandora::CaloHit* const pCaloHit) {
 }
 
 /**
+ *  @brief  Whether a calo hit is flagged as a possible beam induced background hit
+ *
+ *  ATTN: calo hits that have not been created through the LCCaloHitFactory cannot carry the flag and are
+ *  hence reported as not being possible beam induced background.
+ *
+ *  @param  pCaloHit the address of the calo hit
+ *
+ *  @return whether the calo hit is flagged as a possible beam induced background hit
+ */
+inline bool IsPossibleBIB(const pandora::CaloHit* const pCaloHit) {
+  const LCCaloHit* const pLCCaloHit(GetLCCaloHit(pCaloHit));
+
+  return pLCCaloHit ? pLCCaloHit->IsPossibleBIB() : false;
+}
+
+/**
  *  @brief  Set the possible beam induced background flag on a calo hit
  *
  *  @param  pCaloHit the address of the calo hit

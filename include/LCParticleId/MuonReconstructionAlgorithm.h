@@ -91,6 +91,7 @@ private:
   std::string m_muonClusteringAlgName;    ///< The name of the muon clustering algorithm to run
 
   bool m_shouldClusterIsolatedHits; ///< Whether to directly include isolated hits in newly formed clusters
+  bool m_shouldExcludeBIBHits;      ///< Whether to exclude hits flagged as possible beam-induced background
 
   unsigned int m_maxClusterCaloHits;       ///< The maximum number of calo hits in a muon cluster
   unsigned int m_minClusterOccupiedLayers; ///< The minimum number of occupied layers in a muon cluster
