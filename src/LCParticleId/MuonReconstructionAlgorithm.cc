@@ -127,8 +127,20 @@ StatusCode MuonReconstructionAlgorithm::AssociateMuonTracks(const ClusterList* c
 
       if (muonEntryR > coilMidPointR) {
         isInBarrel = true;
-        PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
-                                 helix.GetPointOnCircle(coilMidPointR, helix.GetReferencePoint(), muonEntryPoint));
+
+        // The track state at the calorimeter can already lie outside the coil mid-point radius (e.g. a solenoid placed
+        // in front of the ECAL). GetPointOnCircle only searches forwards along the helix and would then return the
+        // crossing on the far side of the detector, so start the external helix at the track state instead.
+        const CartesianVector& calorimeterPosition(pTrack->GetTrackStateAtCalorimeter().GetPosition());
+        const float calorimeterR(std::sqrt(calorimeterPosition.GetX() * calorimeterPosition.GetX() +
+                                           calorimeterPosition.GetY() * calorimeterPosition.GetY()));
+
+        if (calorimeterR < coilMidPointR) {
+          PANDORA_RETURN_RESULT_IF(STATUS_CODE_SUCCESS, !=,
+                                   helix.GetPointOnCircle(coilMidPointR, helix.GetReferencePoint(), muonEntryPoint));
+        } else {
+          muonEntryPoint = calorimeterPosition;
+        }
       }
 
       // Create helix that can be propagated in muon system, outside central detector
